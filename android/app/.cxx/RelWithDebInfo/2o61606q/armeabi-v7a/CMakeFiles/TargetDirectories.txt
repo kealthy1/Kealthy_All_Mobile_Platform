@@ -1,0 +1,2 @@
+E:/kealthy/kealthy_android/android/app/.cxx/RelWithDebInfo/2o61606q/armeabi-v7a/CMakeFiles/edit_cache.dir
+E:/kealthy/kealthy_android/android/app/.cxx/RelWithDebInfo/2o61606q/armeabi-v7a/CMakeFiles/rebuild_cache.dir

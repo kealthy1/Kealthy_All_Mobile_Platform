@@ -1,0 +1,2 @@
+C:/Users/cotol/kealthy/android/app/.cxx/RelWithDebInfo/y3f634e5/x86/CMakeFiles/edit_cache.dir
+C:/Users/cotol/kealthy/android/app/.cxx/RelWithDebInfo/y3f634e5/x86/CMakeFiles/rebuild_cache.dir

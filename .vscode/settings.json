@@ -1,0 +1,6 @@
+{
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.configuration.updateBuildConfiguration": "disabled",
+    "emulator.emulatorPath": "C:\\Users\\cotol\\AppData\\Local\\Android\\Sdk\\emulator",
+    "git.ignoreLimitWarning": true
+}
