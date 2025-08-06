@@ -16,12 +16,13 @@ android {
     ndkVersion = "25.1.8937393"
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
         freeCompilerArgs += ["-Xlint:unchecked", "-Xlint:deprecation"]
     }
 
@@ -29,7 +30,7 @@ android {
         applicationId = "com.COTOLORE.Kealthy"
         minSdk = 23
         targetSdk = 35
-        versionCode 114
+        versionCode 117
         versionName = flutter.versionName
     }
     configurations.all {
@@ -73,6 +74,7 @@ configurations.configureEach {
 }
 
 dependencies {
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
     implementation 'com.google.android.play:integrity:1.4.0'
     implementation 'com.google.android.gms:play-services-auth:20.4.0'
     implementation 'com.razorpay:checkout:1.6.13'
