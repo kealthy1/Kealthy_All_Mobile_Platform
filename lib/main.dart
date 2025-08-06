@@ -15,7 +15,7 @@ import 'package:kealthy/view/subscription/sub_details.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
-  print('1');
+  print('after');
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 print('2');
