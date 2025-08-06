@@ -15,10 +15,9 @@ import 'package:kealthy/view/subscription/sub_details.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
-  print('after');
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-print('2');
+  print('2');
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
