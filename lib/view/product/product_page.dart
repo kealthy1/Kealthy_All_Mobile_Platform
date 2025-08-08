@@ -43,7 +43,6 @@ class _ProductPageState extends ConsumerState<ProductPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _pageController = PageController();
-    // Initialize currentProductIdProvider
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(currentProductIdProvider.notifier).state = widget.productId;
       ref.read(selectedQuantityProvider.notifier).state =

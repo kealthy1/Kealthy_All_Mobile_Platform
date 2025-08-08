@@ -69,45 +69,48 @@ class _HomePageState extends ConsumerState<HomePage>
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
-        builder: (context) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: GestureDetector(
-            onTap: () {
-              Navigator.of(context).pop();
-              Future.delayed(const Duration(milliseconds: 500), () {
-                ref.read(tabIndexProvider.notifier).state = 1;
-              });
-            },
-            child: Container(
-              width: MediaQuery.of(context).size.width,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(
-                      'lib/assets/images/kitchen logo5.png',
-                      fit: BoxFit.cover,
-                      width: 80,
-                      height: 80,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  const Expanded(
-                    child: Text(
-                      'Discover Kealthy Kitchen: your new healthy food destination!',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: GestureDetector(
+              onTap: () {
+                Navigator.of(context).pop();
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  ref.read(tabIndexProvider.notifier).state = 1;
+                });
+              },
+              child: Container(
+                width: MediaQuery.of(context).size.width,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.asset(
+                        'lib/assets/images/kitchen logo5.png',
+                        fit: BoxFit.cover,
+                        width: 80,
+                        height: 80,
                       ),
                     ),
-                  ),
-                  const Icon(Icons.arrow_forward_ios_rounded)
-                ],
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Text(
+                        'Discover Kealthy Kitchen: your new healthy food destination!',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios_rounded)
+                  ],
+                ),
               ),
             ),
           ),
@@ -121,9 +124,7 @@ class _HomePageState extends ConsumerState<HomePage>
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
- Future.microtask(() {
-    checkVersionUpdate(ref);
-  });      ref.read(cartProvider.notifier).loadCartItems();
+      ref.read(cartProvider.notifier).loadCartItems();
       checkLocationPermission(ref);
       ref.read(locationDataProvider);
       if (!hasShownDialog) {
@@ -317,8 +318,7 @@ class _HomePageState extends ConsumerState<HomePage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      checkLocationPermission(
-          ref); // ✅ Check permission & show bottom sheet if needed
+      checkLocationPermission(ref);
     }
   }
 
@@ -336,6 +336,9 @@ class _HomePageState extends ConsumerState<HomePage>
 
   @override
   Widget build(BuildContext context) {
+    print('building');
+    checkVersionUpdate(ref);
+
     super.build(context);
     final cartItems = ref.read(cartProvider);
     final selectedAddress = ref.watch(selectedLocationProvider);
@@ -509,29 +512,33 @@ class _HomePageState extends ConsumerState<HomePage>
                         error: (error, stack) => const SizedBox.shrink(),
                       ),
                       const SizedBox(height: 10),
-Consumer(
-  builder: (context, ref, _) {
-    final showBanner = ref.watch(versionUpdateAvailableProvider);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (showBanner)
-          Padding(
-            padding: const EdgeInsets.only(right: 10.0,left: 10),
-            child: UpdateBanner(
-              onTap: () {
-                final url = Platform.isIOS
-                    ? 'https://apps.apple.com/in/app/id6740621148'
-                    : 'https://play.google.com/store/apps/details?id=com.COTOLORE.Kealthy';
-                launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-              },
-            ),
-          ),
-        const CenteredTitleWidget(title: "Fitness & Health"),
-      ],
-    );
-  },
-),
+                      Consumer(
+                        builder: (context, ref, _) {
+                          final showBanner =
+                              ref.watch(versionUpdateAvailableProvider);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (showBanner)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                      right: 10.0, left: 10),
+                                  child: UpdateBanner(
+                                    onTap: () {
+                                      final url = Platform.isIOS
+                                          ? 'https://apps.apple.com/in/app/id6740621148'
+                                          : 'https://play.google.com/store/apps/details?id=com.COTOLORE.Kealthy';
+                                      launchUrl(Uri.parse(url),
+                                          mode: LaunchMode.externalApplication);
+                                    },
+                                  ),
+                                ),
+                              const CenteredTitleWidget(
+                                  title: "Fitness & Health"),
+                            ],
+                          );
+                        },
+                      ),
                       const SizedBox(height: 20),
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 10),

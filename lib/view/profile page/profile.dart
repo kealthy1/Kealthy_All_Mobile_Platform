@@ -19,7 +19,7 @@ import 'package:shimmer/shimmer.dart';
 // Example: version from package_info
 final versionProvider = FutureProvider<String>((ref) async {
   final packageInfo = await PackageInfo.fromPlatform();
-  return packageInfo.version; // e.g. "1.0.0"
+  return packageInfo.version;
 });
 
 class ProfilePage extends ConsumerStatefulWidget {
