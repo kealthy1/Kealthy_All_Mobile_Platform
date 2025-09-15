@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
+import 'package:kealthy/view/Cart/cart_controller.dart';
+import 'package:kealthy/view/food/food_subcategory.dart';
 import 'package:kealthy/view/payment/Online_payment.dart';
 import 'package:kealthy/view/payment/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -154,9 +156,25 @@ class SubscriptionPaymentPage extends ConsumerWidget {
                       '${DateFormat('h:mm a').format(slot['start']!)} - ${DateFormat('h:mm a').format(slot['end']!)}';
                   await prefs.setString(
                       'subscription_delivery_slot', formattedSlot);
+                  final cartItems = ref.read(cartProvider);
+                  final cartTypes = cartItems.map((item) => item.type).toSet();
+                  final trialDishesByType = {
+                    for (var type in cartTypes)
+                      type: ref.read(dishesProvider(type)),
+                  };
+
+                  final allTrialDishes = trialDishesByType.values
+                      .whereType<AsyncData<List<TrialDish>>>()
+                      .expand((async) => async.value)
+                      .toList();
+                  final trialcategory =
+                      allTrialDishes.map((d) => d.category).toList();
 
                   final razorpayOrderId =
                       await OrderService.createRazorpayOrder(
+                          category: trialcategory.isNotEmpty
+                              ? trialcategory.first
+                              : 'Unknown',
                           totalAmount: totalAmount,
                           address: address,
                           packingInstructions: '',

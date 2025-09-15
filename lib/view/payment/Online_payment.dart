@@ -110,7 +110,9 @@ class _OnlinePaymentProcessingState
           "item_name": item.name ?? '',
           "item_price": item.price ?? 0.0,
           "item_quantity": item.quantity ?? 1,
-          "item_ean": item.ean ?? ''
+          "item_ean": item.ean ?? '',
+          "item_nwt": item.netWeight ?? '',
+          "item_Category": item.type ?? ''
         };
       }).toList(),
       "paymentmethod": "Online Payment",
@@ -128,7 +130,7 @@ class _OnlinePaymentProcessingState
       "failureReason": response.message ?? 'Unknown',
       "failureCode": response.code,
     };
-
+    print('failureOrderData----$failureOrderData');
     await FirebaseFirestore.instance
         .collection('FailedPayments')
         .add(failureOrderData);
@@ -143,7 +145,6 @@ class _OnlinePaymentProcessingState
     await OrderService.removeRazorpayOrderId();
     ref.read(cartProvider.notifier).clearCart();
 
-    // Show failure dialog from the new helper
     PaymentDialogHelper.showPaymentFailureDialog(context);
   }
 

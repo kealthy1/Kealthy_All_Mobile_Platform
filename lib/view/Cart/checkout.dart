@@ -437,7 +437,6 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
 
                           final double normalDeliveryFee = calculateDeliveryFee(
                               widget.itemTotal, distanceInKm);
-
                           Navigator.push(
                             context,
                             CupertinoPageRoute(

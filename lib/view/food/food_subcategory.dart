@@ -35,6 +35,7 @@ class TrialDish {
   final String sugar;
   final String carbs;
   final Map<String, int>? quantitySoh;
+  final String category;
 
   TrialDish({
     required this.id,
@@ -61,6 +62,7 @@ class TrialDish {
     required this.sugar,
     required this.carbs,
     this.quantitySoh,
+    required this.category,
   });
 
   factory TrialDish.fromFirestore(
@@ -74,37 +76,37 @@ class TrialDish {
     // Create set of unique prices from quantityPrices
     final prices = quantityPrices.values.toSet();
     return TrialDish(
-      id: id,
-      name: data['Name'] ?? '',
-      quantityIds: quantityIds,
-      carbs: data['Total Carbohydrates (g)'] ?? '',
-      sugar: data['Sugars (g)'] ?? '',
-      unsaturatedFat: data['Unsaturated Fat (g)'] ?? '',
-      transFat: data['Trans Fat (g)'] ?? '',
-      totalFat: data['Total Fat (g)'] ?? '',
-      saturatedFat: data['Saturated Fat (g)'] ?? '',
-      protein: data['Protein (g)'] ?? '',
-      what: data['What is it?'] ?? '',
-      whatisitusedfor: data['What is it used for?'] ?? '',
-      energy: data['Energy (kcal)'] ?? '',
-      fiber: data['Dietary Fiber (g)'] ?? '',
-      nutrients: data['Vendor Name'] ?? '',
-      stock: data['SOH'] is int
-          ? data['SOH']
-          : int.tryParse(data['SOH']?.toString() ?? '0') ?? 0,
-      price: data['Price'] is num
-          ? data['Price']
-          : int.tryParse(data['Price']?.toString() ?? '0') ?? 0,
-      quantities: quantities,
-      quantityPrices: quantityPrices,
-      productNames: productNames,
-      prices: prices,
-      ingredients: (data['Ingredients'] as List?)?.join(', ') ?? '',
-      imageurl: (data['ImageUrl'] is List && data['ImageUrl'].isNotEmpty)
-          ? data['ImageUrl'][0]
-          : '',
-      quantitySoh: quantitySoh,
-    );
+        id: id,
+        name: data['Name'] ?? '',
+        quantityIds: quantityIds,
+        carbs: data['Total Carbohydrates (g)'] ?? '',
+        sugar: data['Sugars (g)'] ?? '',
+        unsaturatedFat: data['Unsaturated Fat (g)'] ?? '',
+        transFat: data['Trans Fat (g)'] ?? '',
+        totalFat: data['Total Fat (g)'] ?? '',
+        saturatedFat: data['Saturated Fat (g)'] ?? '',
+        protein: data['Protein (g)'] ?? '',
+        what: data['What is it?'] ?? '',
+        whatisitusedfor: data['What is it used for?'] ?? '',
+        energy: data['Energy (kcal)'] ?? '',
+        fiber: data['Dietary Fiber (g)'] ?? '',
+        nutrients: data['Vendor Name'] ?? '',
+        stock: data['SOH'] is int
+            ? data['SOH']
+            : int.tryParse(data['SOH']?.toString() ?? '0') ?? 0,
+        price: data['Price'] is num
+            ? data['Price']
+            : int.tryParse(data['Price']?.toString() ?? '0') ?? 0,
+        quantities: quantities,
+        quantityPrices: quantityPrices,
+        productNames: productNames,
+        prices: prices,
+        ingredients: (data['Ingredients'] as List?)?.join(', ') ?? '',
+        imageurl: (data['ImageUrl'] is List && data['ImageUrl'].isNotEmpty)
+            ? data['ImageUrl'][0]
+            : '',
+        quantitySoh: quantitySoh,
+        category: data['Category']);
   }
 }
 

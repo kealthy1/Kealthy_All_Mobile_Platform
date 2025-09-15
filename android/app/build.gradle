@@ -12,7 +12,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.COTOLORE.Kealthy"
-    compileSdk = 35
+    compileSdk = 36
     ndkVersion = "25.1.8937393"
 
     compileOptions {
@@ -28,7 +28,7 @@ android {
 
     defaultConfig {
         applicationId = "com.COTOLORE.Kealthy"
-        minSdk = 23
+        minSdkVersion flutter.minSdkVersion
         targetSdk = 35
         versionCode 117
         versionName = flutter.versionName

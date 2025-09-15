@@ -38,6 +38,13 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
       builder: (context, snapshot) {
         if (snapshot.hasData) {
           final customOrder = ['Breakfast', 'Lunch', '4 PM', 'Dinner'];
+          final customImage = [
+            'lib/assets/images/breakfast.png',
+            'lib/assets/images/lunch.jpg',
+            'lib/assets/images/evening.png',
+            'lib/assets/images/Dinner_Updated.png'
+          ];
+
           final categories = snapshot.data?.docs.map((doc) {
             return {
               'Categories': doc.data()['Categories'],

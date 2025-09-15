@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:kealthy/view/Cart/row_text.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class BillDetailsWidget extends StatelessWidget {
+class BillDetailsWidget extends StatefulWidget {
   final double itemTotal;
   final double distanceInKm;
   // final double instantDeliveryFee;
@@ -19,40 +20,158 @@ class BillDetailsWidget extends StatelessWidget {
   });
 
   @override
+  State<BillDetailsWidget> createState() => _BillDetailsWidgetState();
+}
+
+class _BillDetailsWidgetState extends State<BillDetailsWidget> {
+  final TextEditingController _couponController = TextEditingController();
+  String _couponStatus = '';
+  Color _couponStatusColor = Colors.black;
+  double _couponDiscount = 0.0;
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _couponController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _applyCoupon() async {
+    final String enteredCode = _couponController.text.trim().toUpperCase();
+    if (enteredCode.isEmpty) {
+      setState(() {
+        _couponStatus = 'Please enter a coupon code.';
+        _couponStatusColor = Colors.orange;
+      });
+      return;
+    }
+
+    if (enteredCode == 'EXPIRED') {
+      setState(() {
+        _couponStatus = 'Coupon code is expired.';
+        _couponStatusColor = Colors.red;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _couponStatus = '';
+    });
+
+    try {
+      final QuerySnapshot query =
+          await FirebaseFirestore.instance.collection('CouponCodes').get();
+      final Map<String, dynamic>? data = query.docs.isNotEmpty
+          ? query.docs.first.data() as Map<String, dynamic>
+          : null;
+
+      if (data == null) {
+        setState(() {
+          _couponStatus = 'No coupon codes found.';
+          _couponStatusColor = Colors.red;
+          _couponDiscount = 0.0;
+        });
+        return;
+      }
+
+      bool isMatch = false;
+      double discount = 0.0;
+
+      for (var entry in data.entries) {
+        final value = entry.value.toString().toUpperCase();
+        if (value == enteredCode) {
+          isMatch = true;
+          // Extract discount percentage from the coupon code (e.g., "DAILYFAN20" -> 20)
+          final percentageMatch = RegExp(r'(\d+)').firstMatch(enteredCode);
+          if (percentageMatch != null) {
+            discount = double.tryParse(percentageMatch.group(0)!) ?? 0.0;
+          }
+          break;
+        }
+      }
+
+      if (!isMatch) {
+        setState(() {
+          _couponStatus = 'Invalid coupon code.';
+          _couponStatusColor = Colors.red;
+          _couponDiscount = 0.0;
+        });
+        return;
+      }
+
+      if (discount < 10 || discount > 30) {
+        setState(() {
+          _couponStatus = 'Invalid discount percentage.';
+          _couponStatusColor = Colors.red;
+          _couponDiscount = 0.0;
+        });
+        return;
+      }
+
+      setState(() {
+        _couponDiscount = discount;
+        _couponStatus = 'Coupon applied successfully! $discount% off.';
+        _couponStatusColor = Colors.green;
+      });
+    } catch (e) {
+      setState(() {
+        _couponStatus = 'Error applying coupon. Please try again.';
+        _couponStatusColor = Colors.red;
+        _couponDiscount = 0.0;
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     // Calculate the discounted delivery fee
-    double discountedFee = _calculateDiscountedFee(itemTotal, distanceInKm);
+    double discountedFee =
+        _calculateDiscountedFee(widget.itemTotal, widget.distanceInKm);
 
     // Check if free delivery is unlocked
-    bool isFreeDelivery =
-        (discountedFee == 0 && itemTotal >= 199 && distanceInKm <= 7);
+    bool isFreeDelivery = (discountedFee == 0 &&
+        widget.itemTotal >= 199 &&
+        widget.distanceInKm <= 7);
 
     // Original delivery fee (without discount)
-    double originalFee = distanceInKm * 10;
+    double originalFee = widget.distanceInKm * 10;
 
     // Fixed handling fee
     double handlingFee = 5;
 
     // Product discount logic: Only apply discount if offerDiscount > 0
-    double productDiscount =
-        offerDiscount > 0 ? (itemTotal >= 50 ? 50 : itemTotal) : 0;
-    double adjustedItemTotal = itemTotal - productDiscount;
+    double productDiscount = widget.offerDiscount > 0
+        ? (widget.itemTotal >= 50 ? 50 : widget.itemTotal)
+        : 0;
+    double adjustedItemTotal = widget.itemTotal - productDiscount;
+
+    // Apply coupon discount if > 0
+    double couponDiscountAmount = 0.0;
+    if (_couponDiscount > 0) {
+      couponDiscountAmount = (adjustedItemTotal * _couponDiscount / 100);
+      adjustedItemTotal -= couponDiscountAmount;
+    }
 
     // Total amount to pay
     double finalTotalToPay = adjustedItemTotal + discountedFee + handlingFee;
-    //double finalTotalToPay = 1;
 
     // Pass the calculated total up if callback is provided
-    if (onTotalCalculated != null) {
-      onTotalCalculated!(finalTotalToPay);
+    if (widget.onTotalCalculated != null) {
+      widget.onTotalCalculated!(finalTotalToPay);
       debugPrint(
           '✅ Final To Pay passed to Checkout: ₹${finalTotalToPay.toStringAsFixed(0)}');
     }
 
     // Dynamic delivery message
     String deliveryMessage = _getDeliveryMessage(
-        itemTotal, distanceInKm, discountedFee, originalFee);
-    Color messageColor = _getMessageColor(itemTotal, distanceInKm);
+        widget.itemTotal, widget.distanceInKm, discountedFee, originalFee);
+    Color messageColor =
+        _getMessageColor(widget.itemTotal, widget.distanceInKm);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -99,19 +218,67 @@ class BillDetailsWidget extends StatelessWidget {
 
             // Item Total
             RowTextWidget(
-                label: "Item Total", value: "₹${itemTotal.toStringAsFixed(0)}"),
+                label: "Item Total",
+                value: "₹${widget.itemTotal.toStringAsFixed(0)}"),
             const SizedBox(height: 5),
 
-            if (offerDiscount > 0) ...[
+            if (widget.offerDiscount > 0) ...[
               RowTextWidget(
                   label: "FIRST01 Offer",
                   colr: Colors.green,
-                  value: "₹${productDiscount.toStringAsFixed(0)}"),
+                  value: "-₹${productDiscount.toStringAsFixed(0)}"),
               const SizedBox(height: 5),
               RowTextWidget(
                   label: "Discounted Price",
                   colr: Colors.black,
-                  value: "₹${adjustedItemTotal.toStringAsFixed(0)}"),
+                  value:
+                      "₹${(widget.itemTotal - productDiscount).toStringAsFixed(0)}"),
+              const SizedBox(height: 5),
+            ],
+
+            // Coupon Section
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _couponController,
+                    decoration: InputDecoration(
+                      hintText: 'Enter coupon code',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _applyCoupon,
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Apply'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (_couponStatus.isNotEmpty) ...[
+              Text(
+                _couponStatus,
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: _couponStatusColor,
+                ),
+              ),
+              const SizedBox(height: 5),
+            ],
+            if (_couponDiscount > 0) ...[
+              RowTextWidget(
+                  label: "Coupon Discount ($_couponDiscount%)",
+                  colr: Colors.green,
+                  value: "-₹${couponDiscountAmount.toStringAsFixed(0)}"),
               const SizedBox(height: 5),
             ],
 
@@ -119,7 +286,7 @@ class BillDetailsWidget extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  "Delivery Fee | ${distanceInKm.toStringAsFixed(2)} km",
+                  "Delivery Fee | ${widget.distanceInKm.toStringAsFixed(2)} km",
                   style: GoogleFonts.poppins(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,

@@ -30,6 +30,7 @@ import 'package:kealthy/view/search/searchbar.dart';
 import 'package:kealthy/view/splash_screen/version_check.dart';
 import 'package:kealthy/view/splash_screen/version_update_provider.dart';
 import 'package:kealthy/view/subscription/sub_details.dart';
+import 'package:kealthy/view/subscription/subscrption_hub_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -558,7 +559,7 @@ class _HomePageState extends ConsumerState<HomePage>
                               context,
                               MaterialPageRoute(
                                 builder: (context) =>
-                                    const SubscriptionDetailsPage(),
+                                    const SubscriptionHubPage(),
                               ),
                             );
                           },

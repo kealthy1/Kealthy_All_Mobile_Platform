@@ -28,4 +28,20 @@ class Address {
     required this.selectedRoad,
     required this.selectedInstruction,
   });
+  Map<String, dynamic> toJson() {
+    return {
+      'slot': slot,
+      'type': type,
+      'name': name,
+      'landmark': landmark,
+      'instruction': instruction,
+      'distance': distance,
+      'cartItems': cartItems.map((item) => item.toJson()).toList(),
+      'selectedDistance': selectedDistance,
+      'selectedLatitude': selectedLatitude,
+      'selectedLongitude': selectedLongitude,
+      'selectedRoad': selectedRoad,
+      'selectedInstruction': selectedInstruction,
+    };
+  }
 }

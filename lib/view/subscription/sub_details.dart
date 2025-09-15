@@ -136,7 +136,7 @@ class _SubscriptionDetailsPageState
     );
   }
 }
-
+ 
 class PlanCard extends ConsumerWidget {
   final String title;
   final String description;

@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:http/http.dart';
 import 'package:intl/intl.dart';
 import 'package:kealthy/view/Toast/toast_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -129,6 +130,7 @@ class OrderService {
 
   /// Creates a Razorpay order via your backend’s `/create-order` route, with full order data.
   static Future<String> createRazorpayOrder({
+    required String category,
     required double totalAmount,
     required dynamic address,
     required String packingInstructions,
@@ -185,6 +187,7 @@ class OrderService {
           "totalAmountToPay": totalAmount.round(),
           "deliveryFee": deliveryFee,
           "item_ean": "8908024418004",
+          "item_category": category,
           "planTitle": planTitle,
           "productName": productName,
           "BaseRate": baserate,
@@ -213,7 +216,8 @@ class OrderService {
               "item_price": item.price ?? 0.0,
               "item_quantity": item.quantity ?? 1,
               "item_ean": item.ean ?? '',
-              "item_category": item.type ?? ''
+              "item_category": category,
+              "item_netWeight": item.quantityName ?? '',
             };
           }).toList(),
           "paymentmethod": "Online Payment",
@@ -232,8 +236,11 @@ class OrderService {
           "device": 'android',
         };
       }
+      print('orderData----$orderData');
+      print('item category----${category}');
 
-      final response = await http.post(
+      final response = Response('', 400);
+      await http.post(
         Uri.parse('$backendUrl/create-order'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -272,7 +279,7 @@ class OrderService {
   }
 
   static Future<void> saveOrderToFirebase({
-    // required double offerDiscount,
+    required String category,
     required String preferredTime,
     required dynamic address,
     required double totalAmount,
@@ -319,7 +326,8 @@ class OrderService {
             "item_price": item.price ?? 0.0,
             "item_quantity": item.quantity ?? 1,
             "item_ean": item.ean ?? '',
-            "item_category": item.type ?? ''
+            "item_category": item.type ?? '',
+            "item_netWeight": item.quantityName ?? '',
           };
         }).toList(),
         "paymentmethod": paymentMethod,
@@ -339,7 +347,7 @@ class OrderService {
         // "offerDiscount": offerDiscount,
         // "instantDeliveryfee": instantDeliveryFee,
       };
-
+      print('orderData----$orderData');
       // Save to Realtime Database
       await database.ref().child('orders').child(orderId).set(orderData);
       print('Order saved successfully with orderId = $orderId');
@@ -347,8 +355,8 @@ class OrderService {
       // Decrement stock
       await decrementSOHForItems(address);
 
-      // Optionally save a notification doc to Firestore
-      // await saveNotificationToFirestore(orderId, address.cartItems);
+     // Optionally save a notification doc to Firestore
+      await saveNotificationToFirestore(orderId, address.cartItems);
     } catch (error, stackTrace) {
       print('Error saving order: $error');
       print('StackTrace: $stackTrace');
@@ -480,7 +488,7 @@ class OrderService {
         'title': "Share Your Thoughts!",
       };
 
-      await firestore.collection('Notifications').add(notificationData);
+      //  await firestore.collection('Notifications').add(notificationData);
       print("✅ Notification data saved successfully!");
     } catch (e) {
       print("❌ Error saving notification data: $e");

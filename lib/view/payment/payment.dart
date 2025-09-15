@@ -212,32 +212,34 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
 
   Widget _buildActionButton(
       String selectedPaymentMethod, bool isOrderSaving, BuildContext context) {
-    return SizedBox(
-      width: MediaQuery.of(context).size.width,
-      height: 50,
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF41586C),
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+    return SafeArea(
+      child: SizedBox(
+        width: MediaQuery.of(context).size.width,
+        height: 58,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF41586C),
+            padding: const EdgeInsets.symmetric(vertical: 15),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
-        ),
-        onPressed: isOrderSaving || selectedPaymentMethod.isEmpty
-            ? null
-            : () async => _handlePayment(context),
-        child: isOrderSaving
-            ? const CupertinoActivityIndicator(color: Color(0xFF41586C))
-            : Text(
-                selectedPaymentMethod == 'Cash on Delivery'
-                    ? "Place Order"
-                    : "Make Payment",
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+          onPressed: isOrderSaving || selectedPaymentMethod.isEmpty
+              ? null
+              : () async => _handlePayment(context),
+          child: isOrderSaving
+              ? const CupertinoActivityIndicator(color: Color(0xFF41586C))
+              : Text(
+                  selectedPaymentMethod == 'Cash on Delivery'
+                      ? "Place Order"
+                      : "Make Payment",
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
+        ),
       ),
     );
   }
@@ -260,8 +262,10 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
         .whereType<AsyncData<List<TrialDish>>>()
         .expand((async) => async.value)
         .toList();
+    final trialcategory = allTrialDishes.map((d) => d.category).toList();
 
     final trialDishNames = allTrialDishes.map((d) => d.name).toSet();
+
     final hasFoodItem =
         cartItems.any((item) => trialDishNames.contains(item.name));
 
@@ -278,7 +282,9 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
 
     try {
       if (selectedPaymentMethod == 'Cash on Delivery') {
+        print('Saving order with category: ${trialDishesByType.keys.first}');
         await OrderService.saveOrderToFirebase(
+          category: trialcategory.isNotEmpty ? trialcategory.first : 'Unknown',
           address: widget.address,
           totalAmount: widget.totalAmount,
           deliveryFee: widget.deliveryfee,
@@ -295,7 +301,10 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
         await ref.read(cartProvider.notifier).clearCart();
         PaymentDialogHelper.showPaymentSuccessDialog(context, ref);
       } else {
+        print('Saving order with category: $trialcategory');
+
         final razorpayOrderId = await OrderService.createRazorpayOrder(
+          category: trialcategory.isNotEmpty ? trialcategory.first : 'Unknown',
           totalAmount: widget.totalAmount,
           address: widget.address,
           packingInstructions: widget.packingInstructions,
