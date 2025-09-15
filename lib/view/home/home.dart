@@ -559,7 +559,7 @@ class _HomePageState extends ConsumerState<HomePage>
                               context,
                               MaterialPageRoute(
                                 builder: (context) =>
-                                    const SubscriptionHubPage(),
+                                    const SubscriptionDetailsPage(),
                               ),
                             );
                           },
