@@ -19,6 +19,7 @@ import 'package:shimmer/shimmer.dart';
 // Example: version from package_info
 final versionProvider = FutureProvider<String>((ref) async {
   final packageInfo = await PackageInfo.fromPlatform();
+  print('App Version: ${packageInfo.version}');
   return packageInfo.version;
 });
 
