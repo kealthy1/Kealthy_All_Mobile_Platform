@@ -130,7 +130,6 @@ class _HomePageState extends ConsumerState<HomePage>
       ref.read(locationDataProvider);
       if (!hasShownDialog) {
         hasShownDialog = true;
-        // Use SharedPreferences to show kitchen dialog only once per day
         SharedPreferences.getInstance().then((prefs) {
           final today = DateTime.now();
           final todayString = "${today.year}-${today.month}-${today.day}";
@@ -337,9 +336,7 @@ class _HomePageState extends ConsumerState<HomePage>
 
   @override
   Widget build(BuildContext context) {
-    print('building');
     checkVersionUpdate(ref);
-
     super.build(context);
     final cartItems = ref.read(cartProvider);
     final selectedAddress = ref.watch(selectedLocationProvider);
@@ -559,7 +556,7 @@ class _HomePageState extends ConsumerState<HomePage>
                               context,
                               MaterialPageRoute(
                                 builder: (context) =>
-                                    const SubscriptionDetailsPage(),
+                                    const SubscriptionHubPage(),
                               ),
                             );
                           },
@@ -931,12 +928,10 @@ class _HomePageState extends ConsumerState<HomePage>
 
                         if (data.isNotEmpty) {
                           if (data.containsKey('addressType')) {
-                            // ✅ Selected Address: Show both fields
                             displayText = data['addressType']!;
                             subText = data['address']!;
                             showSubText = true;
                           } else {
-                            // ✅ Current Location: Show only one field
                             displayText = data['address']!;
                           }
                         } else {

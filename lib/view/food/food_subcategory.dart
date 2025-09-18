@@ -112,6 +112,7 @@ class TrialDish {
 
 final dishesProvider =
     StreamProvider.family<List<TrialDish>, String?>((ref, categoryName) async* {
+  print('Fetching dishes for category: $categoryName');
   yield* FirebaseFirestore.instance
       .collection('Products')
       .where('Type', isEqualTo: categoryName)
@@ -140,7 +141,6 @@ final dishesProvider =
         dishMap[baseName]!['Name'] = baseName;
       }
 
-      // Collect unique quantities and prices for this base name
       if (quantity.isNotEmpty) {
         quantitySohMap[baseName] = quantitySohMap[baseName] ?? {};
         quantitySohMap[baseName]![quantity] =
@@ -465,12 +465,12 @@ class _FoodSubCategoryPageState extends ConsumerState<FoodSubCategoryPage> {
         dish.quantitySoh?.values.every((soh) => soh <= 0) ?? dish.stock == 0;
 
     return IgnorePointer(
-      ignoring: isOutOfStock || !isAvailableNow,
+      ignoring: isOutOfStock,
       child: Opacity(
-        opacity: (isOutOfStock || !isAvailableNow) ? 0.5 : 1,
+        opacity: (isOutOfStock) ? 0.5 : 1,
         child: GestureDetector(
           onTap: () {
-            if (isAvailableNow && !isOutOfStock) {
+            if (!isOutOfStock) {
               Navigator.push(
                 context,
                 CupertinoPageRoute(

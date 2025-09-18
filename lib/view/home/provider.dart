@@ -235,7 +235,6 @@ final locationDataProvider = FutureProvider<Map<String, String>>((ref) async {
 
   final result = await getSelectedAddressOrCurrentLocation(ref);
 
-  // 🧠 Auto-retry if it's still "Locating..."
   if (result['address'] == 'Locating...') {
     Future.delayed(const Duration(seconds: 5), () {
       ref.invalidateSelf(); // ✅ auto-trigger retry

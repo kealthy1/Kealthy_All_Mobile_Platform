@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:kealthy/view/subscription/dietType.dart';
 import 'package:kealthy/view/subscription/lunch_sub_confirmation.dart';
@@ -275,8 +276,7 @@ class NewSubscriptionPage extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
             SwitchListTile(
-              title: Text(
-                  'Add ${_secondaryMealType.name.capitalize()} (two meals per day)'),
+              title: Text('Add ${_secondaryMealType.name.capitalize()}?'),
               value: st.isTwoMeals,
               onChanged: (value) {
                 ref.read(lunchDinnerProvider.notifier).setTwoMeals(value);
@@ -287,7 +287,7 @@ class NewSubscriptionPage extends ConsumerWidget {
                 style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             SwitchListTile(
-              title: const Text('Are you allergic to anything?'),
+              title: const Text('Are you allergic?'),
               value: st.isAllergySelectionEnabled,
               onChanged: (value) {
                 ref
@@ -333,6 +333,20 @@ class NewSubscriptionPage extends ConsumerWidget {
             const Text('Select Available Days',
                 style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.circle, size: 8, color: Colors.red),
+                const SizedBox(width: 5),
+                Text('Non-Veg Days'),
+                const SizedBox(width: 10),
+                Icon(Icons.circle, size: 8, color: Colors.green),
+                const SizedBox(width: 5),
+                Text('Veg Days')
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(mealType == MealType.lunch ? 'Lunch Days' : 'Dinner Days '),
+            const SizedBox(height: 8),
             _SkipDaysGrid(
               start: st.startDate,
               horizonDays: 30,
@@ -344,6 +358,8 @@ class NewSubscriptionPage extends ConsumerWidget {
             ),
             if (st.isTwoMeals) ...[
               const SizedBox(height: 16),
+              Text('${_secondaryMealType.name.capitalize()} Days '),
+              const SizedBox(height: 6),
               _SkipDaysGrid(
                 start: st.startDate,
                 horizonDays: 30,
@@ -507,7 +523,7 @@ class _SkipDaysGrid extends ConsumerWidget {
                     color: isSkipped(d)
                         ? Colors.red
                         : d.weekday == DateTime.sunday
-                            ? Colors.grey
+                            ? Colors.black
                             : Colors.green,
                   ),
                 ),
@@ -538,6 +554,26 @@ class _SkipDaysGrid extends ConsumerWidget {
                               : Colors.red,
                         ),
                       ),
+                    if (d.weekday == DateTime.sunday)
+                      Positioned(
+                          bottom: 2,
+                          right: 2,
+                          child: Text('SUNDAY',
+                              style: GoogleFonts.poppins(
+                                fontSize: 7,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.redAccent,
+                              ))),
+                    if (isSkipped(d))
+                      Positioned(
+                          bottom: 2,
+                          right: 2,
+                          child: Text('SKIPPED',
+                              style: GoogleFonts.poppins(
+                                fontSize: 7,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red[600],
+                              ))),
                   ],
                 ),
               ),

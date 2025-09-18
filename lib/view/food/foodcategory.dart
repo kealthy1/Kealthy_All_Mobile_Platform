@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:kealthy/view/food/food_subcategory.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -37,12 +38,13 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
           firestore.collection('foodSubcategory').orderBy('Categories').get(),
       builder: (context, snapshot) {
         if (snapshot.hasData) {
-          final customOrder = ['Breakfast', 'Lunch', '4 PM', 'Dinner'];
-          final customImage = [
-            'lib/assets/images/breakfast.png',
-            'lib/assets/images/lunch.jpg',
-            'lib/assets/images/evening.png',
-            'lib/assets/images/Dinner_Updated.png'
+          final customOrder = [
+            'Chicken',
+            'Beef',
+            'Tuna',
+            'Salads',
+            "Vegetarian",
+            "Probiotic"
           ];
 
           final categories = snapshot.data?.docs.map((doc) {
@@ -56,7 +58,7 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
             final indexB = customOrder.indexOf(b['Categories']);
             return indexA.compareTo(indexB);
           });
-
+          print('categories: $categories');
           if (categories != null) {
             preloadCategoryImages(categories);
           }
@@ -65,8 +67,8 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
             child: Column(
               children: [
                 Wrap(
-                  spacing: 8.0,
-                  runSpacing: 8.0,
+                  spacing: 12.0,
+                  runSpacing: 12.0,
                   children: categories?.map((category) {
                         return GestureDetector(
                           onTap: () {
@@ -81,7 +83,7 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
                             );
                           },
                           child: SizedBox(
-                            width: (MediaQuery.of(context).size.width - 40),
+                            width: (MediaQuery.of(context).size.width - 60) / 2,
                             child: Column(
                               children: [
                                 ClipRRect(
@@ -111,7 +113,16 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 4),
+                                Text(
+                                  category['Categories'] as String,
+                                  style: GoogleFonts.poppins(
+                                    color: Colors.black54,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
                               ],
                             ),
                           ),

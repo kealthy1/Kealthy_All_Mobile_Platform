@@ -1,43 +1,111 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:kealthy/view/Login/login_page.dart';
+import 'package:kealthy/view/address/provider.dart';
 import 'package:kealthy/view/subscription/dietType.dart';
 import 'package:kealthy/view/subscription/new_subscription_page.dart';
+import 'package:kealthy/view/subscription/lunch_sub_confirmation.dart';
+import 'package:intl/intl.dart';
+
+// yyyy-MM-dd for RTDB keys
+String dfmt(DateTime d) =>
+    DateFormat('yyyy-MM-dd').format(DateTime(d.year, d.month, d.day));
+
+String normalizePhone(String? s) => (s ?? '')
+    .replaceAll(RegExp(r'\D'), ''); // keep consistent with stored value
+
+Set<String> readSkipDates(dynamic raw) {
+  if (raw == null) return {};
+  if (raw is List) return raw.map((e) => e.toString()).toSet();
+  if (raw is Map) {
+    // { "yyyy-MM-dd": true }
+    return raw.entries
+        .where((e) =>
+            e.value == true || e.value == 1 || e.value?.toString() == 'true')
+        .map((e) => e.key.toString())
+        .toSet();
+  }
+  return {};
+}
+
+Map<String, dynamic> skipDatesToMap(Set<String> set) =>
+    {for (final s in set) s: true};
+
+List<Map<String, dynamic>> normalizeDeliveriesDetailed(dynamic raw) {
+  if (raw == null) return [];
+  if (raw is List) {
+    return raw
+        .whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+  }
+  if (raw is Map) {
+    return raw.values
+        .whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+  }
+  return [];
+}
+
+int toInt(dynamic v, {int fallback = 0}) {
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v?.toString() ?? '') ?? fallback;
+}
 
 final firestoreProvider =
     Provider<FirebaseFirestore>((ref) => FirebaseFirestore.instance);
 
-final addressProvider = Provider<Map<String, dynamic>>((ref) => {
-      'userId': 'user123',
-      'addressLine1': '123 Main St',
-      'addressLine2': 'Apt 4B',
-      'city': 'Mumbai',
-      'state': 'Maharashtra',
-      'zipCode': '400001',
-    });
+final databaseProvider = Provider<DatabaseReference>((ref) {
+  return FirebaseDatabase.instanceFor(
+    app: Firebase.app(),
+    databaseURL: 'https://kealthy-90c55-dd236.firebaseio.com/',
+  ).ref();
+});
 
 final userSubscriptionsProvider =
-    StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final fs = ref.watch(firestoreProvider);
-  final userId = ref.watch(addressProvider)['userId'] as String?;
+    StreamProvider.family<List<Map<String, dynamic>>, MealType>(
+        (ref, mealType) {
+  final db = ref.watch(databaseProvider);
+  final rawPhone = ref.watch(phoneNumberProvider); // watch, not read
+  final number = normalizePhone(rawPhone);
 
-  // If no user yet, emit an empty list (still a Stream).
-  if (userId == null || userId.isEmpty) {
-    return Stream.value(const <Map<String, dynamic>>[]);
-  }
+  final query = db
+      .child('food_subscription')
+      .orderByChild('delivery/phone')
+      .equalTo(number);
 
-  final query =
-      fs.collection('meal_subscriptions').where('userId', isEqualTo: userId);
-  // Optional (uncomment if you have this field):
-  // .orderBy('createdAt', descending: true);
+  return query.onValue.map((event) {
+    final map = (event.snapshot.value as Map?) ?? {};
+    final want = mealType == MealType.lunch ? 'lunch' : 'dinner';
 
-  return query.snapshots().map((snap) {
-    return snap.docs.map((doc) {
-      final data = doc.data();
-      // Include doc ID for convenience.
-      return {'id': doc.id, ...data};
-    }).toList();
+    final list = map.entries
+        .map((e) {
+          final m = Map<String, dynamic>.from(e.value as Map);
+          final mt = (m['mealType'] ?? '').toString().toLowerCase();
+          final selectedMeals = (m['selectedMeals'] as List?)
+                  ?.map((x) => x.toString().toLowerCase())
+                  .toSet() ??
+              const <String>{};
+
+          if (mt != want && !selectedMeals.contains(want)) return null;
+          return {'id': e.key.toString(), ...m};
+        })
+        .whereType<Map<String, dynamic>>()
+        .toList();
+
+    // Optional: sort by customer.name (case-insensitive)
+    list.sort((a, b) => (a['customer']?['name'] ?? '')
+        .toString()
+        .toLowerCase()
+        .compareTo((b['customer']?['name'] ?? '').toString().toLowerCase()));
+
+    return list;
   });
 });
 
@@ -51,7 +119,8 @@ class LunchDinnerPlanPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subscriptionsAsync = ref.watch(userSubscriptionsProvider);
+    final subscriptionsAsync = ref.watch(userSubscriptionsProvider(mealType));
+    final selectedAddress = ref.watch(selectedLocationProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -61,7 +130,8 @@ class LunchDinnerPlanPage extends ConsumerWidget {
         child: subscriptionsAsync.when(
           data: (subscriptions) {
             final filteredSubscriptions = subscriptions
-                .where((sub) => sub['mealType'] == mealType.name)
+                .where((sub) =>
+                    sub['selectedMeals'].contains(mealType.name.toLowerCase()))
                 .toList();
             if (filteredSubscriptions.isEmpty) {
               return const Center(
@@ -117,42 +187,49 @@ class LunchDinnerPlanPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _toggleAvailability(BuildContext context, WidgetRef ref,
-      Map<String, dynamic> subscription, bool available) async {
-    final fs = ref.read(firestoreProvider);
-    final subRef = fs.collection('meal_subscriptions').doc(subscription['id']);
-    final today = DateTime.now();
-    final todayStripped = DateTime(today.year, today.month, today.day);
-    final skipDates =
-        List<String>.from(subscription['skipDates'] as List<dynamic>? ?? []);
-    final startDate = DateTime.parse(subscription['startDate'] as String);
-    final planDays = subscription['planDays'] as int;
+  Future<void> _toggleAvailability(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> subscription,
+    bool available, // true = deliver today, false = skip today
+  ) async {
+    final db = ref.read(databaseProvider);
+    final subRef = db.child('food_subscription').child(subscription['id']);
+
+    final mealKey = mealType.name.toLowerCase();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final todayIso = dfmt(today);
     final deliveryHour = mealType == MealType.lunch ? 12 : 18;
 
-    // Early exit if today is not a valid delivery day
-    if (todayStripped.weekday == DateTime.sunday ||
-        startDate.isAfter(todayStripped)) {
+    final mealDateRanges =
+        Map<String, dynamic>.from(subscription['mealDateRanges'] ?? {});
+    final mealRange = Map<String, dynamic>.from(mealDateRanges[mealKey] ?? {});
+    final startDate =
+        DateTime.parse((mealRange['startDate'] ?? todayIso) as String);
+
+    final planDays = toInt(subscription['planDays'], fallback: 0);
+    final skipSet = readSkipDates(subscription['skipDates']);
+    final baseDetailed =
+        normalizeDeliveriesDetailed(subscription['deliveriesDetailed']);
+
+    if (today.weekday == DateTime.sunday || startDate.isAfter(today)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Today is not a valid delivery day!')),
       );
       return;
     }
 
-    // Update skipDates based on availability
-    final todayIso = todayStripped.toIso8601String();
-    final isTodaySkipped = skipDates.contains(todayIso);
-    if (available && isTodaySkipped) {
-      skipDates.remove(todayIso);
-    } else if (!available && !isTodaySkipped) {
-      skipDates.add(todayIso);
+    final isSkipped = skipSet.contains(todayIso);
+    if (available && isSkipped) {
+      skipSet.remove(todayIso);
+    } else if (!available && !isSkipped) {
+      skipSet.add(todayIso);
     } else {
-      return; // No change needed
+      return; // no change
     }
 
-    // Adjust planDays: increase if skipping, decrease if making available
-    final newPlanDays = available ? planDays - 1 : planDays + 1;
-
-    // Ensure planDays doesn't go below 1
+    final newPlanDays = available ? (planDays - 1) : (planDays + 1);
     if (newPlanDays < 1) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cannot reduce plan days below 1!')),
@@ -160,146 +237,57 @@ class LunchDinnerPlanPage extends ConsumerWidget {
       return;
     }
 
-    // Recalculate deliveries, excluding skipped dates
+    // Rebuild schedule
     final dates = <DateTime>[];
     var cursor = startDate;
     while (dates.length < newPlanDays) {
-      final day = DateTime(cursor.year, cursor.month, cursor.day);
-      if (day.weekday != DateTime.sunday &&
-          !skipDates.contains(day.toIso8601String())) {
-        dates.add(day);
+      final d = DateTime(cursor.year, cursor.month, cursor.day);
+      if (d.weekday != DateTime.sunday && !skipSet.contains(dfmt(d))) {
+        dates.add(d);
       }
       cursor = cursor.add(const Duration(days: 1));
     }
+    final newLast = dates.isNotEmpty ? dates.last : startDate;
 
-    // Log the new last delivery date for clarity
-    final newLastDeliveryDate = dates.isNotEmpty ? dates.last : startDate;
-    print('Toggle availability: today=$todayStripped, available=$available, '
-        'newPlanDays=$newPlanDays, newLastDeliveryDate=$newLastDeliveryDate');
+    String dietFor(DateTime day) {
+      final target = DateTime(day.year, day.month, day.day, deliveryHour);
+      final hit = baseDetailed.firstWhere(
+        (e) => DateTime.parse(e['date'].toString()).isAtSameMomentAs(target),
+        orElse: () => const {'diet': 'nonVeg'},
+      );
+      return hit['diet']?.toString() ?? 'nonVeg';
+    }
 
-    // Create deliveriesDetailed, preserving existing diet preferences
     final deliveriesDetailed = dates
         .map((d) => {
               'date': DateTime(d.year, d.month, d.day, deliveryHour)
                   .toIso8601String(),
-              'diet':
-                  (subscription['deliveriesDetailed'] as List<dynamic>? ?? [])
-                      .firstWhere(
-                (entry) => DateTime.parse(entry['date']).isAtSameMomentAs(
-                    DateTime(d.year, d.month, d.day, deliveryHour)),
-                orElse: () => {'diet': 'nonVeg'},
-              )['diet'] as String,
+              'diet': dietFor(d),
             })
-        .where((entry) => !skipDates.contains(
-            DateTime.parse(entry['date'] as String)
-                .toIso8601String()
-                .substring(0, 10))) // Exclude skipped dates
         .toList();
 
     final deliveriesIso =
-        deliveriesDetailed.map((entry) => entry['date'] as String).toList();
+        deliveriesDetailed.map((e) => e['date'] as String).toList();
 
-    // Update subscription in Firestore
+    mealDateRanges[mealKey] = {
+      'startDate': dfmt(startDate),
+      'endDate': dfmt(newLast),
+    };
+
     final payload = {
-      'skipDates': skipDates,
+      // ✅ store as map in RTDB to avoid array issues
+      'skipDates': skipDatesToMap(skipSet),
+      // If other parts of your app still expect a list, swap the line above for:
+      // 'skipDates': skipSet.toList(),
       'planDays': newPlanDays,
       'deliveries': deliveriesIso,
       'deliveriesDetailed': deliveriesDetailed,
+      'mealDateRanges': mealDateRanges,
     };
 
     await subRef.update(payload);
 
-    // Update kitchen buckets and routes
-    final batch = fs.batch();
-    // Clear existing buckets and routes for this subscription
-    final existingDeliveries =
-        List<String>.from(subscription['deliveries'] as List<dynamic>? ?? []);
-    for (final delivery in existingDeliveries) {
-      final dt = DateTime.parse(delivery);
-      final dayKey =
-          '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-      final dietStr =
-          (subscription['deliveriesDetailed'] as List<dynamic>? ?? [])
-              .firstWhere(
-        (entry) => DateTime.parse(entry['date']).isAtSameMomentAs(dt),
-        orElse: () => {'diet': 'nonVeg'},
-      )['diet'] as String;
-      final bucketId = '${mealType.name}-$dietStr';
-
-      final bucketRef = fs
-          .collection('kitchens')
-          .doc(dayKey)
-          .collection('buckets')
-          .doc(bucketId);
-      final routeRef = fs
-          .collection('kitchens')
-          .doc(dayKey)
-          .collection('routes')
-          .doc(subscription['id']);
-
-      batch.set(
-        bucketRef,
-        {
-          'count': FieldValue.increment(-1),
-          'allergiesRollup': FieldValue.arrayRemove(
-              subscription['allergies'] as List<dynamic>? ?? []),
-        },
-        SetOptions(merge: true),
-      );
-      batch.delete(routeRef);
-    }
-
-    // Add new buckets and routes
-    for (final entry in deliveriesDetailed) {
-      final dt = DateTime.parse(entry['date'] as String);
-      final dayKey =
-          '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-      final dietStr = entry['diet'] as String;
-      final bucketId = '${mealType.name}-$dietStr';
-
-      final bucketRef = fs
-          .collection('kitchens')
-          .doc(dayKey)
-          .collection('buckets')
-          .doc(bucketId);
-
-      batch.set(
-        bucketRef,
-        {
-          'date': dayKey,
-          'mealType': mealType.name,
-          'diet': dietStr,
-          'count': FieldValue.increment(1),
-          'allergiesRollup': FieldValue.arrayUnion(
-              subscription['allergies'] as List<dynamic>? ?? []),
-        },
-        SetOptions(merge: true),
-      );
-
-      final routeRef = fs
-          .collection('kitchens')
-          .doc(dayKey)
-          .collection('routes')
-          .doc(subscription['id']);
-
-      batch.set(
-        routeRef,
-        {
-          'subscriptionId': subscription['id'],
-          'mealType': mealType.name,
-          'diet': dietStr,
-          'deliveryAt': dt.toIso8601String(),
-          'allergies': subscription['allergies'] as List<dynamic>? ?? [],
-          'address': subscription['address'],
-        },
-        SetOptions(merge: true),
-      );
-    }
-
-    await batch.commit();
-
-    // Show confirmation with new last delivery date
-    final formattedNewDate = DateFormat('d/M/y').format(newLastDeliveryDate);
+    final formattedNewDate = DateFormat('d/M/y').format(newLast);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -310,82 +298,11 @@ class LunchDinnerPlanPage extends ConsumerWidget {
       ),
     );
 
-    ref.refresh(userSubscriptionsProvider); // Refresh subscriptions
+    ref.refresh(userSubscriptionsProvider(mealType));
   }
 }
 
-Color _mealColor(MealType t, BuildContext ctx) {
-  final p = Theme.of(ctx).colorScheme.primary;
-  switch (t) {
-    case MealType.lunch:
-      return Colors.teal.shade700;
-    case MealType.dinner:
-      return Colors.indigo.shade600;
-  }
-}
-
-IconData _mealIcon(MealType t) {
-  switch (t) {
-    case MealType.lunch:
-      return Icons.restaurant_menu_rounded;
-    case MealType.dinner:
-      return Icons.nightlight_round_rounded;
-  }
-}
-
-class _Pill extends StatelessWidget {
-  final String text;
-  final IconData? icon;
-  final Color? color;
-  const _Pill(this.text, {this.icon, this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = color ?? Theme.of(context).colorScheme.primary;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
-      decoration: BoxDecoration(
-        color: c.withOpacity(0.12),
-        border: Border.all(color: c),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 13, color: c),
-            const SizedBox(width: 6),
-          ],
-          Text(text,
-              style: TextStyle(
-                color: c,
-                fontWeight: FontWeight.w800,
-                fontSize: 11,
-              )),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _SectionTitle(this.icon, this.text);
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 18),
-        const SizedBox(width: 8),
-        Text(text,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-      ],
-    );
-  }
-}
-
-class SubscriptionCard extends ConsumerWidget {
+class SubscriptionCard extends StatelessWidget {
   final Map<String, dynamic> subscription;
   final MealType mealType;
   final VoidCallback onEdit;
@@ -399,188 +316,63 @@ class SubscriptionCard extends ConsumerWidget {
     required this.onToggleAvailability,
   });
 
-  DateTime _d(DateTime d) => DateTime(d.year, d.month, d.day);
-
-  Set<DateTime> _skipSet(List<String> isoList) => {
-        for (final s in isoList)
-          () {
-            final dt = DateTime.parse(s);
-            return DateTime(dt.year, dt.month, dt.day);
-          }(),
-      };
-
-  List<DateTime> _buildSchedule({
-    required DateTime start,
-    required int planDays,
-    required Set<DateTime> skipDates,
-  }) {
-    final out = <DateTime>[];
-    var cursor = _d(start);
-    while (out.length < planDays) {
-      final day = _d(cursor);
-      final isSunday = day.weekday == DateTime.sunday;
-      final isSkipped = skipDates.contains(day);
-      if (!isSunday && !isSkipped) out.add(day);
-      cursor = cursor.add(const Duration(days: 1));
-    }
-    return out;
-  }
-
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final startDate = DateTime.parse(subscription['deliveries'][0] as String);
-    final planDays = subscription['planDays'] as int;
-    final mealTypeStr = subscription['mealType'] as String;
+  Widget build(BuildContext context) {
+    final startDate = DateTime.parse(subscription['mealDateRanges']
+        [mealType.name.toLowerCase()]['startDate']);
+    final endDate = DateTime.parse(
+        subscription['mealDateRanges'][mealType.name.toLowerCase()]['endDate']);
+    final isActive = DateTime.now().isBefore(endDate);
+    Set<String> getSkipDates(dynamic raw) {
+      if (raw == null) return {};
+      if (raw is List) return raw.map((e) => e.toString()).toSet();
+      if (raw is Map) {
+        // if you store { "2025-09-18": true, ... }
+        return raw.entries
+            .where((e) => e.value == true || e.value == 1)
+            .map((e) => e.key.toString())
+            .toSet();
+      }
+      return {};
+    }
 
-    final today = _d(DateTime.now());
-    final todayIso = today.toIso8601String();
-
-    final skipRaw =
-        List<String>.from(subscription['skipDates'] as List<dynamic>? ?? []);
-    final skipSet = _skipSet(skipRaw);
-
-    final schedule = planDays > 0
-        ? _buildSchedule(
-            start: startDate, planDays: planDays, skipDates: skipSet)
-        : <DateTime>[];
-
-    final endDate = schedule.isNotEmpty ? schedule.last : _d(startDate);
-    final nextDelivery = schedule.firstWhere(
-      (d) => !d.isBefore(today),
-      orElse: () => DateTime(0),
-    );
-    final hasNext = nextDelivery.year > 1;
-    final remaining = schedule.where((d) => !d.isBefore(today)).length;
-
-    final hasAllergies =
-        ((subscription['allergies'] as List<dynamic>?)?.isNotEmpty ?? false);
-    final hasSkips = skipRaw.isNotEmpty;
-
-    final isTodayValid =
-        startDate.isBefore(today.add(const Duration(days: 1))) &&
-            today.weekday != DateTime.sunday;
-    final isTodayAvailable = !skipRaw.contains(todayIso);
-
-    final mealC = _mealColor(mealType, context);
-
-    String dt(DateTime d) => DateFormat('d/M/y').format(d);
-
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final skipDates = getSkipDates(subscription['skipDates']);
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      elevation: 5,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [mealC.withOpacity(.10), mealC.withOpacity(.02)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${subscription['mealType']} Subscription',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            child: Row(
+            const SizedBox(height: 8),
+            Text('Plan Days: ${subscription['planDays']}'),
+            Text('Start: ${DateFormat('d/M/y').format(startDate)}'),
+            Text('End: ${DateFormat('d/M/y').format(endDate)}'),
+            Text('Status: ${isActive ? 'Active' : 'Expired'}'),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                CircleAvatar(
-                  backgroundColor: mealC.withAlpha(15),
-                  foregroundColor: mealC,
-                  child: Icon(_mealIcon(mealType)),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(mealTypeStr,
-                          style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 7,
-                        children: [
-                          _Pill('Period: ${dt(startDate)}  to  ${dt(endDate)}',
-                              icon: Icons.calendar_month_rounded, color: mealC),
-                          _Pill('$planDays days',
-                              icon: Icons.event_note_rounded, color: mealC),
-                          if (hasNext)
-                            _Pill('Next: ${dt(nextDelivery)}',
-                                icon: Icons.schedule_rounded, color: mealC),
-                          if (hasNext)
-                            _Pill('$remaining left',
-                                icon: Icons.timelapse_rounded, color: mealC),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Edit subscription',
+                TextButton(
                   onPressed: onEdit,
-                  icon: const Icon(Icons.edit_rounded),
+                  child: const Text('Edit'),
                 ),
+                TextButton(
+                  onPressed: () =>
+                      onToggleAvailability(!skipDates.contains(today)),
+                  child: Text(skipDates.contains(today)
+                      ? 'Enable Today'
+                      : 'Skip Today'),
+                )
               ],
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (hasAllergies) ...[
-                  const _SectionTitle(
-                      Icons.health_and_safety_rounded, 'Allergies'),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: (subscription['allergies'] as List<dynamic>)
-                        .cast<String>()
-                        .map((a) => _Pill(a, icon: Icons.tag_faces_rounded))
-                        .toList(),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                if (hasSkips) ...[
-                  const _SectionTitle(Icons.event_busy_rounded, 'Skip Dates'),
-                  const SizedBox(height: 8),
-                  Text(
-                    skipRaw.map((s) => dt(DateTime.parse(s))).join(', '),
-                    style: const TextStyle(color: Colors.black54),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                if (isTodayValid)
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      color: Colors.black.withOpacity(.03),
-                      border: Border.all(
-                        color: (isTodayAvailable ? mealC : Colors.redAccent)
-                            .withOpacity(.35),
-                      ),
-                    ),
-                    child: SwitchListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
-                      title: const Text("I'm available today"),
-                      subtitle: Text(
-                        isTodayAvailable
-                            ? 'You will receive today’s meal.'
-                            : 'You will skip today’s meal.',
-                      ),
-                      activeColor: mealC,
-                      value: isTodayAvailable,
-                      onChanged: (value) => onToggleAvailability(value),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -603,316 +395,90 @@ class SubscriptionEditDialog extends ConsumerStatefulWidget {
 
 class _SubscriptionEditDialogState
     extends ConsumerState<SubscriptionEditDialog> {
-  late Set<String> allergies;
-  late Set<DateTime> skipDates;
   late DateTime startDate;
   late int planDays;
-  late Map<DateTime, DietType?> dietOverrides;
-
-  DateTime _d(DateTime d) => DateTime(d.year, d.month, d.day);
-  List<DateTime> _schedule(DateTime start, int days, Set<DateTime> skip) {
-    final out = <DateTime>[];
-    var cur = _d(start);
-    while (out.length < days) {
-      final day = _d(cur);
-      if (day.weekday != DateTime.sunday && !skip.contains(day)) out.add(day);
-      cur = cur.add(const Duration(days: 1));
-    }
-    return out;
-  }
-
-  DateTime get _endDate =>
-      planDays > 0 ? _schedule(startDate, planDays, skipDates).last : startDate;
+  late Set<DateTime> skipDates;
+  late Set<String> allergies;
+  late Map<DateTime, DietType> dietOverrides;
 
   @override
   void initState() {
     super.initState();
-    allergies = Set<String>.from(
-        widget.subscription['allergies'] as List<dynamic>? ?? []);
-    skipDates = (widget.subscription['skipDates'] as List<dynamic>?)?.map((d) {
-          final dt = DateTime.parse(d as String);
-          return DateTime(dt.year, dt.month, dt.day);
-        }).toSet() ??
-        {};
-    startDate = DateTime.parse(widget.subscription['startDate'] as String);
+    startDate = DateTime.parse(widget.subscription['mealDateRanges']
+        [widget.mealType.name.toLowerCase()]['startDate']);
     planDays = widget.subscription['planDays'] as int;
-    dietOverrides = (widget.subscription['deliveriesDetailed']
-                as List<dynamic>?)
-            ?.asMap()
-            .map((_, entry) {
-          final date = DateTime.parse(entry['date'] as String);
-          final diet = entry['diet'] == 'veg' ? DietType.veg : DietType.nonVeg;
-          return MapEntry(DateTime(date.year, date.month, date.day), diet);
-        }) ??
-        {};
+    skipDates = (widget.subscription['skipDates'] as List<dynamic>? ?? [])
+        .map((e) => DateTime.parse(e as String))
+        .toSet();
+    allergies = (widget.subscription['allergies'] as List<dynamic>? ?? [])
+        .map((e) => e.toString())
+        .toSet();
+    dietOverrides =
+        (widget.subscription['deliveriesDetailed'] as List<dynamic>? ?? [])
+            .asMap()
+            .map((_, entry) => MapEntry(
+                  DateTime.parse(entry['date'] as String),
+                  entry['diet'] == 'veg' ? DietType.veg : DietType.nonVeg,
+                ));
   }
 
   @override
   Widget build(BuildContext context) {
-    final ingrAsync =
-        ref.watch(ingredientsProvider(widget.mealType as MealType));
-    final mealC = _mealColor(widget.mealType, context);
-    String dt(DateTime d) => DateFormat('d/M/y').format(d);
+    final ingrAsync = ref.watch(ingredientsProvider(widget.mealType));
 
-    final hasAllergies = allergies.isNotEmpty;
-    final endDate = _endDate;
-    final allDays = <DateTime>[];
-    var cursor = startDate;
-    while (!cursor.isAfter(endDate)) {
-      allDays.add(DateTime(cursor.year, cursor.month, cursor.day));
-      cursor = cursor.add(const Duration(days: 1));
-    }
     return AlertDialog(
-      scrollable: true,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      titlePadding: EdgeInsets.zero,
-      title: Container(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [mealC.withAlpha(14), mealC.withAlpha(02)],
-          ),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: mealC.withOpacity(.15),
-              foregroundColor: mealC,
-              child: Icon(_mealIcon(widget.mealType)),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Edit ${StringExtension(widget.mealType.name).capitalize()} Subscription',
-                style:
-                    const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: Text('Edit ${widget.mealType.name} Subscription'),
       content: SingleChildScrollView(
-        padding: const EdgeInsets.only(top: 8),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _SectionTitle(Icons.event_note_rounded, 'Plan Duration'),
+            const _SectionTitle(Icons.calendar_today, 'Start Date'),
             const SizedBox(height: 8),
-            SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 15, label: Text('15 days')),
-                ButtonSegment(value: 30, label: Text('30 days')),
-              ],
-              selected: {planDays},
-              onSelectionChanged: (s) => setState(() => planDays = s.first),
-              style: ButtonStyle(
-                foregroundColor:
-                    MaterialStateProperty.resolveWith<Color>((states) {
-                  if (states.contains(MaterialState.selected)) {
-                    return Colors.teal; // Selected text color
-                  }
-                  return Colors.black87; // Default text color
-                }),
-                backgroundColor:
-                    MaterialStateProperty.resolveWith<Color>((states) {
-                  if (states.contains(MaterialState.selected)) {
-                    return Colors.teal.withOpacity(0.15); // Selected background
-                  }
-                  return Colors.white; // Default background
-                }),
-              ),
+            _DatePickerTile(
+              date: startDate,
+              onPick: (d) => setState(() => startDate = d),
             ),
-            const SizedBox(height: 18),
-            const _SectionTitle(Icons.calendar_today_rounded, 'Start Date'),
-            const SizedBox(height: 6),
-            ListTile(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              tileColor: Colors.black.withOpacity(.03),
-              title: Text(dt(startDate)),
-              trailing: const Icon(Icons.edit_calendar_rounded),
-              onTap: () async {
-                final picked = await showDatePicker(
+            const SizedBox(height: 16),
+            const _SectionTitle(Icons.event_available, 'Delivery Days'),
+            const SizedBox(height: 8),
+            _SkipDaysGrid(
+              start: startDate,
+              horizonDays: planDays + skipDates.length + 7,
+              isSkipped: (d) =>
+                  skipDates.contains(d) || d.weekday == DateTime.sunday,
+              mealType: widget.mealType,
+              isPrimaryMeal: true,
+              ref: ref,
+              onDayTap: (day, override) {
+                showModalBottomSheet(
                   context: context,
-                  initialDate: startDate,
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
-                  selectableDayPredicate: (d) => d.weekday != DateTime.sunday,
+                  showDragHandle: true,
+                  builder: (_) => _DayEditSheet(
+                    day: day,
+                    isAvailable: !skipDates.contains(day),
+                    isAvailableSecondary: false,
+                    currentOverride: dietOverrides[day],
+                    isTwoMeals: widget.subscription['selectedMealCount'] == 2,
+                    primaryMealType: widget.mealType,
+                    isPrimaryMeal: true,
+                    onSave: (available, _, override) {
+                      setState(() {
+                        if (available) {
+                          skipDates.remove(day);
+                        } else {
+                          skipDates.add(day);
+                        }
+                        if (override != null) {
+                          dietOverrides[day] = override;
+                        } else {
+                          dietOverrides.remove(day);
+                        }
+                      });
+                    },
+                  ),
                 );
-                if (picked != null) setState(() => startDate = picked);
               },
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 6),
-              child: Row(
-                children: [
-                  const Icon(Icons.flag_rounded, size: 18),
-                  const SizedBox(width: 8),
-                  Text('Ends on: ${dt(_endDate)}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 13)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            const _SectionTitle(
-                Icons.tune_rounded, 'Skip Dates & Diet Overrides'),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Container(
-                  width: 18,
-                  height: 18,
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(.18),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.green),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                const Text('Available date', style: TextStyle(fontSize: 12)),
-                const SizedBox(width: 16),
-                Container(
-                  width: 18,
-                  height: 18,
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(.18),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.red),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                const Text('Skipped date', style: TextStyle(fontSize: 12)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Colors.green,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const Text('Veg', style: TextStyle(fontSize: 12)),
-                const SizedBox(width: 15),
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const Text('Non-Veg', style: TextStyle(fontSize: 12)),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 14,
-              runSpacing: 10,
-              children: allDays.map((day) {
-                final isSkipped = skipDates.contains(day);
-                final isSun = day.weekday == DateTime.sunday;
-                final overrideDiet = dietOverrides[day];
-                final isVeg = overrideDiet == DietType.veg;
-                final dotColor = isVeg ? Colors.green : Colors.red;
-                final bg = isSun
-                    ? Colors.grey.withOpacity(.18)
-                    : isSkipped
-                        ? Colors.red.withOpacity(.18)
-                        : Colors.green.withOpacity(.18);
-                final br = isSkipped
-                    ? Colors.redAccent
-                    : isSun
-                        ? Colors.grey
-                        : Colors.transparent;
-
-                return GestureDetector(
-                  onTap: () {
-                    showModalBottomSheet(
-                      context: context,
-                      showDragHandle: true,
-                      builder: (_) => _DayEditSheet(
-                        day: day,
-                        isAvailable: !isSkipped,
-                        isAvailableSecondary: false,
-                        currentOverride: dietOverrides[day],
-                        isTwoMeals: false,
-                        primaryMealType: widget.mealType,
-                        isPrimaryMeal: true,
-                        onSave: (available, _, override) {
-                          setState(() {
-                            available
-                                ? skipDates.remove(day)
-                                : skipDates.add(day);
-                            override == null
-                                ? dietOverrides.remove(day)
-                                : dietOverrides[day] = override;
-                          });
-                        },
-                      ),
-                    ).then((_) => setState(() {}));
-                  },
-                  child: Stack(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: bg,
-                          border: Border.all(color: br),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '${day.day}',
-                          style: TextStyle(
-                            fontWeight:
-                                isSkipped ? FontWeight.w800 : FontWeight.w600,
-                            color: isSun ? Colors.grey[600] : Colors.black87,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 5,
-                        left: 30,
-                        child: Container(
-                          width: 7,
-                          height: 7,
-                          decoration: BoxDecoration(
-                            color: overrideDiet != null
-                                ? dotColor
-                                : Colors.transparent,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                      if (isSun)
-                        Positioned(
-                          top: 28,
-                          left: 2,
-                          right: 2,
-                          child: Text(
-                            'SUNDAY',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 7,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.redAccent,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              }).toList(),
             ),
             const SizedBox(height: 18),
             if (ingrAsync.hasValue && ingrAsync.value!.isNotEmpty) ...[
@@ -958,9 +524,9 @@ class _SubscriptionEditDialogState
   }
 
   Future<void> _updateSubscription(BuildContext context, WidgetRef ref) async {
-    final fs = ref.read(firestoreProvider);
+    final db = ref.read(databaseProvider);
     final subRef =
-        fs.collection('meal_subscriptions').doc(widget.subscription['id']);
+        db.child('food_subscription').child(widget.subscription['id']);
     final deliveryHour = widget.mealType == MealType.lunch ? 12 : 18;
 
     final dates = <DateTime>[];
@@ -986,104 +552,185 @@ class _SubscriptionEditDialogState
             DateTime(d.year, d.month, d.day, deliveryHour).toIso8601String())
         .toList();
 
+    final mealDateRanges =
+        Map<String, dynamic>.from(widget.subscription['mealDateRanges']);
+    mealDateRanges[widget.mealType.name.toLowerCase()] = {
+      'startDate': DateFormat('yyyy-MM-dd').format(startDate),
+      'endDate': DateFormat('yyyy-MM-dd')
+          .format(dates.isNotEmpty ? dates.last : startDate),
+    };
+
     final payload = {
-      'diet': 'nonVeg',
+      'diet':
+          dietOverrides.values.any((d) => d == DietType.veg) ? 'veg' : 'nonVeg',
       'allergies': allergies.toList(),
       'startDate': startDate.toIso8601String(),
-      'skipDates': skipDates.map((d) => d.toIso8601String()).toList(),
+      'skipDates':
+          skipDates.map((d) => d.toIso8601String().substring(0, 10)).toList(),
       'planDays': planDays,
       'deliveries': deliveriesIso,
       'deliveriesDetailed': deliveriesDetailed,
+      'mealDateRanges': mealDateRanges,
+      'pricing': widget.subscription['pricing'],
+      'selectedMeals': widget.subscription['selectedMeals'],
+      'selectedMealCount': widget.subscription['selectedMealCount'],
     };
 
     await subRef.update(payload);
 
-    final batch = fs.batch();
-    final existingDeliveries = List<String>.from(
-        widget.subscription['deliveries'] as List<dynamic>? ?? []);
-    for (final delivery in existingDeliveries) {
-      final dt = DateTime.parse(delivery);
-      final dayKey =
-          '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-      final dietStr =
-          (widget.subscription['deliveriesDetailed'] as List<dynamic>)
-              .firstWhere(
-        (entry) => DateTime.parse(entry['date']).isAtSameMomentAs(dt),
-        orElse: () => {'diet': 'nonVeg'},
-      )['diet'] as String;
-      final bucketId = '${widget.mealType.name}-$dietStr';
-
-      final bucketRef = fs
-          .collection('kitchens')
-          .doc(dayKey)
-          .collection('buckets')
-          .doc(bucketId);
-      final routeRef = fs
-          .collection('kitchens')
-          .doc(dayKey)
-          .collection('routes')
-          .doc(widget.subscription['id']);
-
-      batch.set(
-        bucketRef,
-        {
-          'count': FieldValue.increment(-1),
-          'allergiesRollup': FieldValue.arrayRemove(allergies.toList()),
-        },
-        SetOptions(merge: true),
-      );
-      batch.delete(routeRef);
-    }
-
-    for (final entry in deliveriesDetailed) {
-      final dt = DateTime.parse(entry['date'] as String);
-      final dayKey =
-          '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-      final dietStr = entry['diet'] as String;
-      final bucketId = '${widget.mealType.name}-$dietStr';
-
-      final bucketRef = fs
-          .collection('kitchens')
-          .doc(dayKey)
-          .collection('buckets')
-          .doc(bucketId);
-
-      batch.set(
-        bucketRef,
-        {
-          'date': dayKey,
-          'mealType': widget.mealType.name,
-          'diet': dietStr,
-          'count': FieldValue.increment(1),
-          'allergiesRollup': FieldValue.arrayUnion(allergies.toList()),
-        },
-        SetOptions(merge: true),
-      );
-
-      final routeRef = fs
-          .collection('kitchens')
-          .doc(dayKey)
-          .collection('routes')
-          .doc(widget.subscription['id']);
-
-      batch.set(
-        routeRef,
-        {
-          'subscriptionId': widget.subscription['id'],
-          'mealType': widget.mealType.name,
-          'diet': dietStr,
-          'deliveryAt': dt.toIso8601String(),
-          'allergies': allergies.toList(),
-          'address': widget.subscription['address'],
-        },
-        SetOptions(merge: true),
-      );
-    }
-
-    await batch.commit();
-    ref.refresh(userSubscriptionsProvider);
+    ref.refresh(userSubscriptionsProvider(widget.mealType));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Subscription updated!')),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  final IconData icon;
+  final String title;
+
+  const _SectionTitle(this.icon, this.title);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: Colors.grey[600]),
+        const SizedBox(width: 8),
+        Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+}
+
+class _DatePickerTile extends StatelessWidget {
+  final DateTime date;
+  final ValueChanged<DateTime> onPick;
+
+  const _DatePickerTile({required this.date, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      tileColor: const Color(0xFFF6F6F7),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: Text(DateFormat('d/M/y').format(date)),
+      trailing: const Icon(Icons.calendar_today),
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: date,
+          firstDate: DateTime.now(),
+          lastDate: DateTime.now().add(const Duration(days: 365)),
+          selectableDayPredicate: (DateTime day) {
+            return day.weekday != DateTime.sunday;
+          },
+        );
+        if (picked != null) onPick(picked);
+      },
+    );
+  }
+}
+
+class _SkipDaysGrid extends ConsumerWidget {
+  final DateTime start;
+  final int horizonDays;
+  final bool Function(DateTime) isSkipped;
+  final MealType mealType;
+  final bool isPrimaryMeal;
+  final WidgetRef ref;
+  final void Function(DateTime, DietType?) onDayTap;
+
+  const _SkipDaysGrid({
+    required this.start,
+    required this.horizonDays,
+    required this.isSkipped,
+    required this.mealType,
+    required this.isPrimaryMeal,
+    required this.ref,
+    required this.onDayTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final days = List.generate(
+        horizonDays,
+        (i) => DateTime(start.year, start.month, start.day)
+            .add(Duration(days: i)));
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: days.map((d) {
+        final isSun = d.weekday == DateTime.sunday;
+        final isSkipped = this.isSkipped(d);
+        final overrideDiet =
+            ref.read(lunchDinnerProvider.notifier).dietForDate(d);
+        final bg = isSkipped
+            ? Colors.red.withAlpha(14)
+            : isSun
+                ? Colors.grey.withAlpha(14)
+                : Colors.green.withAlpha(14);
+        final br = isSkipped
+            ? Colors.red
+            : isSun
+                ? Colors.black
+                : Colors.green;
+        final dotColor =
+            overrideDiet == DietType.veg ? Colors.green : Colors.red;
+
+        return GestureDetector(
+          onTap: () => onDayTap(d, overrideDiet),
+          child: Stack(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: bg,
+                  border: Border.all(color: br),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${d.day}',
+                  style: TextStyle(
+                    fontWeight: isSkipped ? FontWeight.w800 : FontWeight.w600,
+                    color: isSun ? Colors.grey[600] : Colors.black87,
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 5,
+                left: 30,
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: overrideDiet != null ? dotColor : Colors.transparent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              if (isSun)
+                Positioned(
+                  top: 28,
+                  left: 2,
+                  right: 2,
+                  child: Text(
+                    'SUNDAY',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 7,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.redAccent,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }
@@ -1109,6 +756,12 @@ class _DayEditSheet extends StatelessWidget {
     required this.isPrimaryMeal,
     required this.onSave,
   });
+
+  IconData _mealIcon(MealType mealType) =>
+      mealType == MealType.lunch ? Icons.wb_sunny : Icons.nightlight_round;
+
+  Color _mealColor(MealType mealType, BuildContext context) =>
+      mealType == MealType.lunch ? Colors.orange : Colors.blueGrey;
 
   @override
   Widget build(BuildContext context) {
@@ -1142,14 +795,30 @@ class _DayEditSheet extends StatelessWidget {
                   color: Colors.black.withOpacity(.03),
                 ),
                 child: SwitchListTile(
-                  title: Text(
-                      "I'm available for ${StringExtension(primaryMealType.name).capitalize()}"),
+                  title: Text("I'm available for ${primaryMealType.name}"),
                   value: available,
                   onChanged: day.weekday == DateTime.sunday
                       ? null
                       : (v) => setState(() => available = v),
                 ),
               ),
+              if (isTwoMeals) ...[
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.black.withOpacity(.03),
+                  ),
+                  child: SwitchListTile(
+                    title: Text(
+                        "I'm available for ${(primaryMealType == MealType.lunch ? MealType.dinner : MealType.lunch).name}"),
+                    value: availableSecondary,
+                    onChanged: day.weekday == DateTime.sunday
+                        ? null
+                        : (v) => setState(() => availableSecondary = v),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               const _SectionTitle(Icons.ramen_dining_rounded, 'Diet override'),
               const SizedBox(height: 8),

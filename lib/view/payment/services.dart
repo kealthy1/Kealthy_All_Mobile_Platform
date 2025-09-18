@@ -239,8 +239,7 @@ class OrderService {
       print('orderData----$orderData');
       print('item category----${category}');
 
-      final response = Response('', 400);
-      await http.post(
+      final response = await http.post(
         Uri.parse('$backendUrl/create-order'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -355,7 +354,7 @@ class OrderService {
       // Decrement stock
       await decrementSOHForItems(address);
 
-     // Optionally save a notification doc to Firestore
+      // Optionally save a notification doc to Firestore
       await saveNotificationToFirestore(orderId, address.cartItems);
     } catch (error, stackTrace) {
       print('Error saving order: $error');

@@ -11,21 +11,20 @@ import 'package:kealthy/view/notifications/offer.dart';
 import 'package:kealthy/view/splash_screen/network.dart';
 import 'package:kealthy/view/splash_screen/splash_screen.dart';
 import 'package:kealthy/view/subscription/sub_details.dart';
+import 'package:kealthy/view/subscription/subscrption_hub_page.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  print('2');
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
 
-  // ✅ Set status bar color and brightness to prevent flicker
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent, // or any matching color
+      statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
       statusBarBrightness: Brightness.light,
     ),
@@ -81,7 +80,7 @@ class MyApp extends ConsumerWidget {
         routes: {
           // your home or starting pageAdd commentMore actions
           '/offers': (context) => const OffersNotificationPage(),
-          '/subscription': (context) => const SubscriptionDetailsPage(),
+          '/subscription': (context) => const SubscriptionHubPage(),
           '/cart': (context) => const CartPage(),
         },
         debugShowCheckedModeBanner: false,

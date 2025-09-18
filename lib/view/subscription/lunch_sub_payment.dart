@@ -35,7 +35,7 @@ class MealsSubPaymentPage extends ConsumerWidget {
       backgroundColor: Colors.white,
       appBar: AppBar(
         surfaceTintColor: Colors.white,
-        title: const Text("Make Payment"),
+        title: const Text("Make Subscription Payment"),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 1,
