@@ -32,12 +32,8 @@ class MealsSubConfirmationPage extends ConsumerWidget {
     const int handlingChargePerDay = 1;
     final int handlingCharge = handlingChargePerDay * durationDays;
     final int selectedQty = isTwoMeals ? 2 : 1; // Derive from isTwoMeals
-    final double totalAmount = (durationDays == 30
-            ? 7500.0
-            : selectedQty.toString() == '1'
-                ? 4000.0
-                : 3750.0) *
-        selectedQty;
+    final double totalAmount =
+        (durationDays == 30 ? 7500.0 : 4000.0) * selectedQty;
 
     return Scaffold(
       backgroundColor: Colors.white,
