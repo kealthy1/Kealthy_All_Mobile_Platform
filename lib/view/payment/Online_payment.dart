@@ -172,6 +172,10 @@ class _OnlinePaymentProcessingState
 
     // Pop with result
     Navigator.pop(context, 'failure');
+    Navigator.pop(context, 'failure');
+    Navigator.pop(context, 'failure');
+    Navigator.pop(context, 'failure');
+    Navigator.pop(context, 'failure');
   }
 
   Future<void> _handleExternalWallet(ExternalWalletResponse response) async {
