@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:kealthy/view/Cart/cart_controller.dart';
+import 'package:kealthy/view/Cart/checkout.dart';
 import 'package:kealthy/view/Cart/provider.dart';
 import 'package:kealthy/view/Cart/time.dart';
 import 'package:kealthy/view/Toast/toast_helper.dart';
@@ -565,11 +566,17 @@ class CartPage extends ConsumerWidget {
                               return;
                             }
 
-                            // Otherwise, go to time page
                             Navigator.push(
                               context,
                               CupertinoPageRoute(
-                                builder: (context) => const TimePage(),
+                                builder: (context) => CheckoutPage(
+                                  preferredTime: '',
+                                  // offerDiscount: 0.0,
+                                  itemTotal: calculateTotalPrice(cartItems),
+                                  cartItems: ref.read(cartProvider),
+                                  deliveryTime: '',
+                                  // instantDeliveryfee: instantDeliveryfee,
+                                ),
                               ),
                             );
                           } catch (e) {

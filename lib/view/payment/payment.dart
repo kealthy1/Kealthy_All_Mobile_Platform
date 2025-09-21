@@ -20,9 +20,9 @@ class PaymentPage extends ConsumerStatefulWidget {
   final String deliverytime;
   final String packingInstructions;
   final double deliveryfee;
-  final String preferredTime;
+  String? preferredTime;
 
-  const PaymentPage({
+  PaymentPage({
     super.key,
     required this.totalAmount,
     required this.instructions,
@@ -30,7 +30,7 @@ class PaymentPage extends ConsumerStatefulWidget {
     required this.deliverytime,
     required this.packingInstructions,
     required this.deliveryfee,
-    required this.preferredTime,
+    this.preferredTime = '',
     required this.initialPaymentMethod,
   });
 
@@ -292,7 +292,7 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
           deliveryInstructions: widget.instructions,
           deliveryTime: widget.deliverytime,
           paymentMethod: 'Cash on Delivery',
-          preferredTime: widget.preferredTime,
+          preferredTime: widget.preferredTime ?? '',
         );
         await OrderService().sendPaymentSuccessNotification(
           token: fcmToken,
@@ -310,7 +310,7 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
           packingInstructions: widget.packingInstructions,
           deliveryInstructions: widget.instructions,
           deliveryTime: widget.deliverytime,
-          preferredTime: widget.preferredTime,
+          preferredTime: widget.preferredTime ?? '',
           isSubscription: false,
           deliveryFee: widget.deliveryfee,
         );
@@ -327,7 +327,7 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
               deliveryFee: widget.deliveryfee,
               razorpayOrderId: razorpayOrderId,
               orderType: 'Normal',
-              preferredTime: widget.preferredTime,
+              preferredTime: widget.preferredTime ?? '',
             ),
           ),
         );

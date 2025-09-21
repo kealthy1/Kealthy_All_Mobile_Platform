@@ -15,17 +15,17 @@ final isProceedingToPaymentProvider = StateProvider<bool>((ref) => false);
 
 // Checkout Page
 class CheckoutPage extends ConsumerStatefulWidget {
-  final String preferredTime;
+  String? preferredTime;
   final double itemTotal;
   final List<CartItem> cartItems;
   final String deliveryTime;
 
-  const CheckoutPage({
+  CheckoutPage({
     super.key,
     required this.itemTotal,
     required this.cartItems,
     required this.deliveryTime,
-    required this.preferredTime,
+    this.preferredTime = '',
   });
 
   @override

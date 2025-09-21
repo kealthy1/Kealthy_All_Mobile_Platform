@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:kealthy/view/subscription/dietType.dart';
 import 'package:kealthy/view/subscription/new_subscription_page.dart';
-import 'package:kealthy/view/subscription/subscription_lunch_dinner_page.dart';
+import 'package:kealthy/view/subscription/subscription_lunch_dinner_page.dart'
+    hide MealType;
 import 'package:shimmer/shimmer.dart';
 
 import 'sub_details.dart';
@@ -21,11 +22,11 @@ class SubscriptionHubPage extends StatelessWidget {
       },
       {
         'Categories': 'Lunch',
-        'image': 'lib/assets/images/lunch_subscribe.png',
+        'image': 'lib/assets/images/generated-image (1).png',
       },
       {
         'Categories': 'Dinner',
-        'image': 'lib/assets/images/dinner_subscribe.png',
+        'image': 'lib/assets/images/generated-image (2).png',
       }
     ];
     final screenWidth = MediaQuery.of(context).size.width;
@@ -34,7 +35,7 @@ class SubscriptionHubPage extends StatelessWidget {
 
     if (screenWidth < 600) {
       tileWidth = screenWidth;
-      tileHeight = screenWidth * 0.5;
+      tileHeight = screenWidth * 0.54;
     } else if (screenWidth < 900) {
       tileWidth = screenWidth;
       tileHeight = 280;
@@ -69,23 +70,23 @@ class SubscriptionHubPage extends StatelessWidget {
                           );
                         } else if (category['Categories'].toString().trim() ==
                             'Lunch') {
-                          // Navigator.push(
-                          //   context,
-                          //   CupertinoPageRoute(
-                          //     builder: (context) => const LunchDinnerPlanPage(
-                          //       mealType: MealType.lunch,
-                          //     ),
-                          //   ),
-                          // );
+                          Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                              builder: (context) => LunchDinnerPlanPage(
+                                mealType: MealType.lunch,
+                              ),
+                            ),
+                          );
                         } else {
-                          // Navigator.push(
-                          //   context,
-                          //   CupertinoPageRoute(
-                          //     builder: (context) => const LunchDinnerPlanPage(
-                          //       mealType: MealType.dinner,
-                          //     ),
-                          //   ),
-                          // );
+                          Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                              builder: (context) => const LunchDinnerPlanPage(
+                                mealType: MealType.dinner,
+                              ),
+                            ),
+                          );
                         }
 
                         // Navigator.push(

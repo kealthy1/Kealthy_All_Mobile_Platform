@@ -29,12 +29,14 @@ class MealsSubConfirmationPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Pricing logic
-    const int handlingChargePerDay = 5;
+    const int handlingChargePerDay = 1;
     final int handlingCharge = handlingChargePerDay * durationDays;
     final int selectedQty = isTwoMeals ? 2 : 1; // Derive from isTwoMeals
-    final double totalAmount = (dietType == DietType.veg
-            ? (durationDays == 30 ? 6000.0 : 3000.0)
-            : (durationDays == 30 ? 7500.0 : 4000.0)) *
+    final double totalAmount = (durationDays == 30
+            ? 7500.0
+            : selectedQty.toString() == '1'
+                ? 4000.0
+                : 3750.0) *
         selectedQty;
 
     return Scaffold(
@@ -270,21 +272,9 @@ class MealsSubConfirmationPage extends ConsumerWidget {
                       style:
                           TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                   const Spacer(),
-                  Text("₹${(totalAmount - handlingCharge).toStringAsFixed(0)}",
+                  Text("₹${(totalAmount).toStringAsFixed(0)}",
                       style: const TextStyle(
                           fontSize: 14, fontWeight: FontWeight.w500)),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Text("Handling Charge : ₹5 x $durationDays Days",
-                      style:
-                          const TextStyle(fontSize: 14, color: Colors.black54)),
-                  const Spacer(),
-                  Text("₹${handlingCharge.toStringAsFixed(0)}",
-                      style:
-                          const TextStyle(fontSize: 14, color: Colors.black54)),
                 ],
               ),
               const SizedBox(height: 6),

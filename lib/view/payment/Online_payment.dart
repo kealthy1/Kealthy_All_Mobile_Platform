@@ -45,6 +45,7 @@ class OnlinePaymentProcessing extends ConsumerStatefulWidget {
 class _OnlinePaymentProcessingState
     extends ConsumerState<OnlinePaymentProcessing> {
   late Razorpay _razorpay;
+  String _paymentResult = 'pending';
 
   @override
   void initState() {
@@ -59,32 +60,49 @@ class _OnlinePaymentProcessingState
   }
 
   Future<void> _handlePaymentSuccess(PaymentSuccessResponse response) async {
-    final prefs = await SharedPreferences.getInstance();
-    final fcmToken = prefs.getString("fcm_token") ?? '';
-    final userName = widget.address.name ?? 'Unknown Name';
-    final orderId = widget.razorpayOrderId;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final fcmToken = prefs.getString("fcm_token") ?? '';
+      final userName = widget.address.name ?? 'Unknown Name';
+      final orderId = widget.razorpayOrderId;
 
-    await OrderService.removeRazorpayOrderId();
-    await OrderService.decrementSOHForItems(widget.address);
-    await OrderService.saveNotificationToFirestore(
-        orderId, widget.address.cartItems);
+      await OrderService.removeRazorpayOrderId();
+      await OrderService.decrementSOHForItems(widget.address);
+      await OrderService.saveNotificationToFirestore(
+          orderId, widget.address.cartItems);
 
-    // ✅ Order will now be saved by the backend webhook
-    // Do NOT save order manually here anymore
+      await OrderService().sendPaymentSuccessNotification(
+        token: fcmToken,
+        userName: userName,
+        orderId: orderId,
+      );
 
-    await OrderService().sendPaymentSuccessNotification(
-      token: fcmToken,
-      userName: userName,
-      orderId: orderId,
-    );
+      if (widget.orderType != 'subscription') {
+        ref.read(cartProvider.notifier).clearCart();
+      }
 
-    // Clear the cart only if not a subscription
-    if (widget.orderType != 'subscription') {
-      ref.read(cartProvider.notifier).clearCart();
+      setState(() {
+        _paymentResult = 'success';
+      });
+
+      PaymentDialogHelper.showPaymentSuccessDialog(context, ref);
+
+      print('success in handlePaymentSuccess');
+      Navigator.pop(context, 'success');
+      Navigator.pop(context, 'success');
+      Navigator.pop(context, 'success');
+      Navigator.pop(context, 'success');
+      Navigator.pop(context, 'success');
+
+      print('popped');
+    } catch (e) {
+      print('Error in handlePaymentSuccess: $e');
+      setState(() {
+        _paymentResult = 'failure';
+      });
+      PaymentDialogHelper.showPaymentFailureDialog(context);
+      Navigator.pop(context, 'failure');
     }
-
-    // Show success dialog from the new helper
-    PaymentDialogHelper.showPaymentSuccessDialog(context, ref);
   }
 
   void _handlePaymentFailure(PaymentFailureResponse response) async {
@@ -145,12 +163,23 @@ class _OnlinePaymentProcessingState
     await OrderService.removeRazorpayOrderId();
     ref.read(cartProvider.notifier).clearCart();
 
+    // Set payment result to failure
+    setState(() {
+      _paymentResult = 'failure';
+    });
+
     PaymentDialogHelper.showPaymentFailureDialog(context);
+
+    // Pop with result
+    Navigator.pop(context, 'failure');
   }
 
   Future<void> _handleExternalWallet(ExternalWalletResponse response) async {
     await OrderService.removeRazorpayOrderId();
-    Navigator.pop(context);
+    setState(() {
+      _paymentResult = 'cancelled';
+    });
+    Navigator.pop(context, 'cancelled');
   }
 
   void openCheckout() async {
@@ -161,6 +190,7 @@ class _OnlinePaymentProcessingState
     final storedOrderId = prefs.getString('RazorpayorderId') ?? '';
     if (storedOrderId.isEmpty) {
       print("❌ No stored Razorpay Order ID found");
+      Navigator.pop(context, 'error'); // Return error if order ID is missing
       return;
     }
 
@@ -199,6 +229,7 @@ class _OnlinePaymentProcessingState
       _razorpay.open(options);
     } catch (e) {
       print('❌ Error opening Razorpay checkout: $e');
+      Navigator.pop(context, 'error'); // Return error if checkout fails
     }
   }
 

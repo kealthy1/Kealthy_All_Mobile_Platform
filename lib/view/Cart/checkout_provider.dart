@@ -103,12 +103,11 @@ double calculateFinalTotal(
 }
 
 final addressProvider = FutureProvider.autoDispose<Address?>((ref) async {
-  final prefs = await SharedPreferences.getInstance();
 
   // Fetch cart items
   final cartItems = ref.watch(cartProvider);
 
-  // Retrieve and print all relevant values for debugging
+  final prefs = await SharedPreferences.getInstance();
   final fetchedSlot = prefs.getString('selected_slot') ?? '';
   final fetchedType = prefs.getString('selectedType') ?? '';
   final fetchedName = prefs.getString('selectedName') ?? '';

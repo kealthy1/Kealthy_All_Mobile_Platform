@@ -100,7 +100,7 @@ class _BillDetailsWidgetState extends State<BillDetailsWidget> {
         return;
       }
 
-      if (discount < 10 || discount > 30) {
+      if (discount < 10 || discount > 45) {
         setState(() {
           _couponStatus = 'Invalid discount percentage.';
           _couponStatusColor = Colors.red;

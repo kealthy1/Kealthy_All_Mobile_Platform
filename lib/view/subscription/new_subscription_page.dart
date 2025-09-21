@@ -248,13 +248,59 @@ class NewSubscriptionPage extends ConsumerWidget {
 
   MealType get _secondaryMealType =>
       mealType == MealType.lunch ? MealType.dinner : MealType.lunch;
+  DateTime _lastServiceDate({
+    required DateTime start,
+    required int neededDays,
+    required bool Function(DateTime) isServiceDay,
+  }) {
+    var cur = _dateOnly(start);
+    var served = 0;
+    while (served < neededDays) {
+      if (isServiceDay(cur)) served++;
+      cur = cur.add(const Duration(days: 1));
+    }
+    return cur.subtract(const Duration(days: 1)); // last included day
+  }
+
+  int _horizonDaysFor({
+    required DateTime start,
+    required int neededDays,
+    required bool Function(DateTime) isServiceDay,
+  }) {
+    final last = _lastServiceDate(
+      start: start,
+      neededDays: neededDays,
+      isServiceDay: isServiceDay,
+    );
+    // +1 to make it inclusive
+    return last.difference(_dateOnly(start)).inDays + 1;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final st = ref.watch(lunchDinnerProvider);
     final ingrAsync = ref.watch(ingredientsProvider(mealType));
     final scrollController = ScrollController();
-
+    final primaryHorizon = _horizonDaysFor(
+      start: st.startDate,
+      neededDays: st.totalDays,
+      isServiceDay: (d) {
+        final day = _dateOnly(d);
+        final isSunday = day.weekday == DateTime.sunday;
+        final isSkipped = st.skipDates.contains(day);
+        return !isSunday && !isSkipped;
+      },
+    );
+    final secondaryHorizon = _horizonDaysFor(
+      start: st.startDate,
+      neededDays: st.totalDays,
+      isServiceDay: (d) {
+        final day = _dateOnly(d);
+        final isSunday = day.weekday == DateTime.sunday;
+        final isSkipped = st.skipDatesSecondary.contains(day);
+        return !isSunday && !isSkipped;
+      },
+    );
     return Scaffold(
       appBar: AppBar(title: Text(_title)),
       body: SafeArea(
@@ -349,7 +395,7 @@ class NewSubscriptionPage extends ConsumerWidget {
             const SizedBox(height: 8),
             _SkipDaysGrid(
               start: st.startDate,
-              horizonDays: 30,
+              horizonDays: primaryHorizon,
               isSkipped: (day) =>
                   st.skipDates.contains(LunchDinnerNotifier._stripTime(day)),
               mealType: mealType,
@@ -362,7 +408,7 @@ class NewSubscriptionPage extends ConsumerWidget {
               const SizedBox(height: 6),
               _SkipDaysGrid(
                 start: st.startDate,
-                horizonDays: 30,
+                horizonDays: secondaryHorizon,
                 isSkipped: (day) => st.skipDatesSecondary
                     .contains(LunchDinnerNotifier._stripTime(day)),
                 mealType: _secondaryMealType,
@@ -381,7 +427,7 @@ class NewSubscriptionPage extends ConsumerWidget {
                           : _title,
                       description:
                           '${st.totalDays} Days Non-Veg Subscription${st.isTwoMeals ? ' (Two Meals)' : ''}',
-                      baseRate: 500,
+                      baseRate: st.isTwoMeals ? 500 : 250,
                       durationDays: st.totalDays,
                       productName: st.isTwoMeals
                           ? 'Lunch and Dinner'
@@ -407,29 +453,66 @@ extension StringExtension on String {
   }
 }
 
+DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+DateTime _nextSelectableWithinRange({
+  required DateTime start,
+  required DateTime last,
+  required bool Function(DateTime) isSelectable,
+}) {
+  var cur = _dateOnly(start);
+  // If start is before today or outside range, clamp to start of range
+  if (cur.isBefore(_dateOnly(DateTime.now()))) {
+    cur = _dateOnly(DateTime.now());
+  }
+  if (cur.isBefore(_dateOnly(DateTime.now()))) cur = _dateOnly(DateTime.now());
+  if (cur.isBefore(_dateOnly(DateTime.now()))) {} // no-op, safety
+
+  // Walk forward until selectable or we hit 'last'
+  while (!isSelectable(cur) && !cur.isAfter(last)) {
+    cur = cur.add(const Duration(days: 1));
+  }
+  // If we somehow walked past 'last', step back inside the range
+  if (cur.isAfter(last)) cur = last;
+  return cur;
+}
+
 class _DatePickerTile extends StatelessWidget {
   final DateTime date;
   final ValueChanged<DateTime> onPick;
+
   const _DatePickerTile({required this.date, required this.onPick});
 
   @override
   Widget build(BuildContext context) {
+    final today = _dateOnly(DateTime.now());
+    final last = _dateOnly(DateTime.now().add(const Duration(days: 365)));
+    final isSelectable = (DateTime d) => d.weekday != DateTime.sunday;
+
+    // Ensure initialDate satisfies the predicate and range
+    final proposed = _dateOnly(date);
+    final initial = isSelectable(proposed)
+        ? proposed
+        : _nextSelectableWithinRange(
+            start: proposed,
+            last: last,
+            isSelectable: isSelectable,
+          );
+
     return ListTile(
       tileColor: const Color(0xFFF6F6F7),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: Text(DateFormat('d/M/y').format(date)),
+      title: Text(DateFormat('d/M/y').format(proposed)),
       trailing: const Icon(Icons.calendar_today),
       onTap: () async {
         final picked = await showDatePicker(
           context: context,
-          initialDate: date,
-          firstDate: DateTime.now(),
-          lastDate: DateTime.now().add(const Duration(days: 365)),
-          selectableDayPredicate: (DateTime day) {
-            return day.weekday != DateTime.sunday;
-          },
+          initialDate: initial, // ✅ guaranteed selectable
+          firstDate: today, // ✅ date-only
+          lastDate: last, // ✅ date-only
+          selectableDayPredicate: isSelectable,
         );
-        if (picked != null) onPick(picked);
+        if (picked != null) onPick(_dateOnly(picked));
       },
     );
   }
