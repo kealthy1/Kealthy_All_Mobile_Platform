@@ -30,7 +30,7 @@ android {
         applicationId = "com.COTOLORE.Kealthy"
         minSdkVersion flutter.minSdkVersion
         targetSdk = 35
-        versionCode 119
+        versionCode 120
         versionName = flutter.versionName
     }
     configurations.all {
