@@ -13,6 +13,7 @@ import 'package:kealthy/view/profile%20page/refund_and_return.dart';
 import 'package:kealthy/view/profile%20page/share.dart';
 import 'package:kealthy/view/profile%20page/support.dart';
 import 'package:kealthy/view/subscription/sub_view_page.dart';
+import 'package:kealthy/view/subscription/subscrption_hub_page.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -167,7 +168,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   context,
                   CupertinoPageRoute(
                       builder: (context) =>
-                          const SubscriptionOrderDetailsPage()),
+                           SubscriptionHubPage()),
                 );
               },
             ),

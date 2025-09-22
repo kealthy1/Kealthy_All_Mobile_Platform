@@ -166,7 +166,9 @@ class OrderService {
 
         orderData = {
           "Name": address.name ?? 'Unknown Name',
-          "type": "subscription",
+          "type": category.toString() == 'Kealthy Kitchen'
+              ? 'food_subscription'
+              : "subscription",
           "assignedto": "NotAssigned",
           "DA": "Waiting",
           "DAMOBILE": "Waiting",
@@ -186,7 +188,8 @@ class OrderService {
           "status": "Order Placed",
           "totalAmountToPay": totalAmount.round(),
           "deliveryFee": deliveryFee,
-          "item_ean": "8908024418004",
+          "item_ean":
+              category.toString() == 'Kealthy Kitchen' ? '' : "8908024418004",
           "item_category": category,
           "planTitle": planTitle,
           "productName": productName,
@@ -197,6 +200,8 @@ class OrderService {
           "subscriptionQty": subscriptionQty,
           "alternateDay": subscriptionType,
         };
+        print('orderData in subscription----$orderData');
+        print('item category- sub ---${category}');
       } else {
         orderData = {
           "Name": address.name ?? 'Unknown Name',

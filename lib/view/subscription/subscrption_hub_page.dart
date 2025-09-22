@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:kealthy/view/subscription/dietType.dart';
 import 'package:kealthy/view/subscription/new_subscription_page.dart';
+import 'package:kealthy/view/subscription/sub_view_page.dart';
 import 'package:kealthy/view/subscription/subscription_lunch_dinner_page.dart'
     hide MealType;
 import 'package:shimmer/shimmer.dart';
@@ -65,7 +66,7 @@ class SubscriptionHubPage extends StatelessWidget {
                             context,
                             CupertinoPageRoute(
                               builder: (context) =>
-                                  const SubscriptionDetailsPage(),
+                                  SubscriptionOrderDetailsPage(),
                             ),
                           );
                         } else if (category['Categories'].toString().trim() ==

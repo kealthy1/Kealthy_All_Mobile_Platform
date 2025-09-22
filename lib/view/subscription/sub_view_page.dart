@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:kealthy/view/subscription/sub_details.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final subscriptionOrderProvider =
@@ -43,6 +44,18 @@ class SubscriptionOrderDetailsPage extends ConsumerWidget {
         ),
         iconTheme: const IconThemeData(color: Colors.black),
         elevation: 1,
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => SubscriptionDetailsPage(),
+            ),
+          );
+        },
+        tooltip: 'New Subscription',
+        child: const Icon(Icons.add),
       ),
       backgroundColor: Colors.white,
       body: orderAsync.when(

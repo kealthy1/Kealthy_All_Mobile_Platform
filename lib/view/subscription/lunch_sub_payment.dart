@@ -128,25 +128,11 @@ class MealsSubPaymentPage extends ConsumerWidget {
                           'subscription_qty', quantity.toDouble());
                       await prefs.setDouble('sub_baseRate', baseRate);
                       await prefs.setInt('sub_handlingFee', handlingCharge);
-                      final cartItems = ref.read(cartProvider);
-                      final cartTypes =
-                          cartItems.map((item) => item.type).toSet();
-                      final trialDishesByType = {
-                        for (var type in cartTypes)
-                          type: ref.read(dishesProvider(type)),
-                      };
+                      print('Createrazorpay orders:');
 
-                      final allTrialDishes = trialDishesByType.values
-                          .whereType<AsyncData<List<TrialDish>>>()
-                          .expand((async) => async.value)
-                          .toList();
-                      final trialcategory =
-                          allTrialDishes.map((d) => d.category).toList();
                       final razorpayOrderId =
                           await OrderService.createRazorpayOrder(
-                        category: trialcategory.isNotEmpty
-                            ? trialcategory.first
-                            : 'Unknown',
+                        category: 'Kealthy Kitchen',
                         totalAmount: totalAmount,
                         address: address,
                         packingInstructions: '',

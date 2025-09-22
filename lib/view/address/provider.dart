@@ -14,7 +14,8 @@ final isLoadingProvider = StateProvider<bool>((ref) => false);
 final customerNameProvider = StateProvider<String?>((ref) => null);
 
 // ✅ Optimized Address Future Provider with Caching
-final addressFutureProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>?>((ref) async {
+final addressFutureProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>?>((ref) async {
   return await getCachedOrFetchAddresses();
 });
 
@@ -40,16 +41,21 @@ Future<List<Map<String, dynamic>>?> getCachedOrFetchAddresses() async {
 }
 
 // ✅ Fetch and Cache API Data
-Future<List<Map<String, dynamic>>?> fetchAndCacheAddresses(String phoneNumber) async {
-  final apiUrl = "https://api-jfnhkjk4nq-uc.a.run.app/getalladdresses?phoneNumber=$phoneNumber";
-  
+Future<List<Map<String, dynamic>>?> fetchAndCacheAddresses(
+    String phoneNumber) async {
+  final apiUrl =
+      "https://api-jfnhkjk4nq-uc.a.run.app/getalladdresses?phoneNumber=$phoneNumber";
+
   try {
     final response = await http.get(Uri.parse(apiUrl));
     if (response.statusCode == 200) {
       final jsonData = jsonDecode(response.body);
-      
-      if (jsonData is Map && jsonData.containsKey('data') && jsonData['data'] is List) {
-        final List<Map<String, dynamic>> addresses = jsonData['data'].cast<Map<String, dynamic>>();
+
+      if (jsonData is Map &&
+          jsonData.containsKey('data') &&
+          jsonData['data'] is List) {
+        final List<Map<String, dynamic>> addresses =
+            jsonData['data'].cast<Map<String, dynamic>>();
 
         // ✅ Save fetched data to SharedPreferences
         final prefs = await SharedPreferences.getInstance();
@@ -72,7 +78,8 @@ Future<List<Map<String, dynamic>>?> fetchAndCacheAddresses(String phoneNumber) a
 }
 
 // ✅ Delete Address and Clear Cache
-Future<void> deleteAddress(String phoneNumber, String type, WidgetRef ref,  BuildContext context) async {
+Future<void> deleteAddress(String phoneNumber, String type, WidgetRef ref,
+    BuildContext context) async {
   try {
     ref.read(isLoadingProvider.notifier).state = true;
 
@@ -82,14 +89,13 @@ Future<void> deleteAddress(String phoneNumber, String type, WidgetRef ref,  Buil
       builder: (context) => WillPopScope(
         onWillPop: () async => false, // Prevents back button press
         child: const Center(
-          child: CupertinoActivityIndicator(
-                                  color: Colors.white)
-        ),
+            child: CupertinoActivityIndicator(color: Colors.white)),
       ),
     );
 
     final response = await http.delete(
-      Uri.parse('https://api-jfnhkjk4nq-uc.a.run.app/deleteaddress?phoneNumber=$phoneNumber&type=$type'),
+      Uri.parse(
+          'https://api-jfnhkjk4nq-uc.a.run.app/deleteaddress?phoneNumber=$phoneNumber&type=$type'),
       headers: {'Content-Type': 'application/json'},
     );
 
@@ -174,7 +180,8 @@ Future<bool> checkPhoneNumber() async {
 Future<String?> formatAddress(Position? position) async {
   if (position == null) return null;
   try {
-    List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+    List<Placemark> placemarks =
+        await placemarkFromCoordinates(position.latitude, position.longitude);
     if (placemarks.isNotEmpty) {
       Placemark place = placemarks[0];
       return "${place.street}";

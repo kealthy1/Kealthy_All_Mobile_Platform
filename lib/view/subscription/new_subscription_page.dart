@@ -276,6 +276,42 @@ class NewSubscriptionPage extends ConsumerWidget {
     return last.difference(_dateOnly(start)).inDays + 1;
   }
 
+  Widget _legendRow() {
+    Widget chip(Color c, String text, {IconData? icon}) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: c.withOpacity(.12),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: c.withOpacity(.28)),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: c.withOpacity(.9)),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              text,
+              style: TextStyle(
+                fontSize: 12,
+                color: c.withOpacity(.9),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ]),
+        );
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        chip(Colors.green, 'Veg', icon: Icons.eco_rounded),
+        chip(Colors.red, 'Non-Veg', icon: Icons.restaurant_rounded),
+        chip(Colors.red, 'Skipped Day', icon: Icons.block_rounded),
+        chip(Colors.orange, 'Sunday', icon: Icons.event_busy_rounded),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final st = ref.watch(lunchDinnerProvider);
@@ -379,17 +415,7 @@ class NewSubscriptionPage extends ConsumerWidget {
             const Text('Select Available Days',
                 style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.circle, size: 8, color: Colors.red),
-                const SizedBox(width: 5),
-                Text('Non-Veg Days'),
-                const SizedBox(width: 10),
-                Icon(Icons.circle, size: 8, color: Colors.green),
-                const SizedBox(width: 5),
-                Text('Veg Days')
-              ],
-            ),
+            _legendRow(),
             const SizedBox(height: 8),
             Text(mealType == MealType.lunch ? 'Lunch Days' : 'Dinner Days '),
             const SizedBox(height: 8),
@@ -542,6 +568,7 @@ class _SkipDaysGrid extends ConsumerWidget {
         horizonDays,
         (i) => DateTime(start.year, start.month, start.day)
             .add(Duration(days: i)));
+
     print(
         'Building _SkipDaysGrid for ${mealType.name}, isPrimaryMeal=$isPrimaryMeal, skipDates=${st.skipDates}, skipDatesSecondary=${st.skipDatesSecondary}');
     return Wrap(
@@ -588,79 +615,115 @@ class _SkipDaysGrid extends ConsumerWidget {
                 ),
               );
             },
-            child: Tooltip(
-              message: ref.read(lunchDinnerProvider.notifier).dietForDate(d) ==
-                      DietType.veg
-                  ? 'Veg Day'
-                  : 'Non-Veg Day',
-              child: Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: isSkipped(d)
-                      ? Colors.red.withAlpha(14)
-                      : Colors.green.withAlpha(14),
-                  border: Border.all(
-                    color: isSkipped(d)
-                        ? Colors.red
-                        : d.weekday == DateTime.sunday
-                            ? Colors.black
-                            : Colors.green,
+            child: Builder(builder: (context) {
+              final ctrl = ref.read(lunchDinnerProvider.notifier);
+
+              final sunday = d.weekday == DateTime.sunday;
+              final skipped = isSkipped(d);
+
+              // If you have an isDelivery(d) helper, use it here instead of this fallback:
+              final delivery =
+                  !sunday && !skipped; // <-- replace with: isDelivery(d)
+
+              // Past-day dimming (optional visual cue)
+              final todayOnly = DateTime.now();
+              final todayDateOnly =
+                  DateTime(todayOnly.year, todayOnly.month, todayOnly.day);
+              final isPast =
+                  DateTime(d.year, d.month, d.day).isBefore(todayDateOnly);
+
+              // Background + border priority: SUNDAY > SKIPPED > DELIVERY > OTHER
+              late Color bg, br, numColor;
+              if (sunday) {
+                bg = Colors.grey.withAlpha(14);
+                br = Colors.black45;
+                numColor = Colors.grey.shade700;
+              } else if (skipped) {
+                bg = Colors.red.withAlpha(14);
+                br = Colors.red;
+                numColor = Colors.black87;
+              } else if (delivery) {
+                bg = Colors.green.withAlpha(14);
+                br = Colors.green;
+                numColor = Colors.black87;
+              } else {
+                bg = Colors.grey.withAlpha(8);
+                br = Colors.grey.withOpacity(.35);
+                numColor = Colors.black54;
+              }
+
+              // Choose overlay icon/colors (no dot on skipped days)
+              IconData? overlayIcon;
+              Color? overlayColor;
+
+              if (sunday) {
+                overlayIcon = Icons.event_busy_rounded; // Sunday icon
+                overlayColor = Colors.orange.shade700;
+              } else if (skipped) {
+                overlayIcon = Icons.block_rounded; // Skipped icon
+                overlayColor = Colors.red.shade700;
+              } else if (delivery) {
+                final DietType? diet = ctrl.dietForDate(d);
+                if (diet == DietType.veg) {
+                  overlayIcon = Icons.eco_rounded; // Veg leaf
+                  overlayColor = Colors.green.shade700;
+                } else {
+                  overlayIcon = Icons.restaurant_rounded; // Non-veg
+                  overlayColor = Colors.red.shade700;
+                }
+              }
+
+              // Tooltip text
+              final tooltip = sunday
+                  ? 'Sunday'
+                  : skipped
+                      ? 'Skipped Day'
+                      : delivery
+                          ? (ctrl.dietForDate(d) == DietType.veg
+                              ? 'Veg Day'
+                              : 'Non-Veg Day')
+                          : 'No Delivery';
+
+              return Tooltip(
+                message: tooltip,
+                child: Opacity(
+                  opacity: isPast
+                      ? 0.45
+                      : 1.0, // past days dimmed (tap handling stays outside)
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: bg,
+                      border: Border.all(color: br),
+                    ),
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: Text(
+                            '${d.day}',
+                            style: TextStyle(
+                              color: numColor,
+                              fontWeight:
+                                  skipped ? FontWeight.w800 : FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (overlayIcon != null && overlayColor != null)
+                          Positioned(
+                            bottom: 3,
+                            right: 3,
+                            child: Icon(overlayIcon,
+                                size: 14, color: overlayColor),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-                child: Stack(
-                  children: [
-                    Center(
-                      child: Text(
-                        '${d.day}',
-                        style: TextStyle(
-                          color: d.weekday == DateTime.sunday
-                              ? Colors.grey[600]
-                              : Colors.black,
-                        ),
-                      ),
-                    ),
-                    if (!isSkipped(d) && d.weekday != DateTime.sunday)
-                      Positioned(
-                        bottom: 2,
-                        right: 2,
-                        child: Icon(
-                          Icons.circle,
-                          size: 8,
-                          color: ref
-                                      .read(lunchDinnerProvider.notifier)
-                                      .dietForDate(d) ==
-                                  DietType.veg
-                              ? Colors.green
-                              : Colors.red,
-                        ),
-                      ),
-                    if (d.weekday == DateTime.sunday)
-                      Positioned(
-                          bottom: 2,
-                          right: 2,
-                          child: Text('SUNDAY',
-                              style: GoogleFonts.poppins(
-                                fontSize: 7,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.redAccent,
-                              ))),
-                    if (isSkipped(d))
-                      Positioned(
-                          bottom: 2,
-                          right: 2,
-                          child: Text('SKIPPED',
-                              style: GoogleFonts.poppins(
-                                fontSize: 7,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red[600],
-                              ))),
-                  ],
-                ),
-              ),
-            ),
+              );
+            }),
           ),
       ],
     );
