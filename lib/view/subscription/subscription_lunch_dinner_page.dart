@@ -577,14 +577,7 @@ class SubscriptionCard extends StatelessWidget {
         const <String>[];
     final hasLunch = selectedMeals.contains('lunch');
     final hasDinner = selectedMeals.contains('dinner');
-    final isTwoMealsPlan = hasLunch && hasDinner;
-    final planLabel = isTwoMealsPlan
-        ? '2-Meal Plan'
-        : hasLunch
-            ? 'Lunch Plan'
-            : hasDinner
-                ? 'Dinner Plan'
-                : '${mealType.name.capitalize()} Plan';
+    final planLabel = '${mealType.name.capitalize()} Plan';
 
     // Per-meal sets (arrays of yyyy-MM-dd strings)
     final vegSetAll = readMealDateStrings(subscription['vegDates'], mealType);
@@ -626,9 +619,19 @@ class SubscriptionCard extends StatelessWidget {
         !todayOnly.isBefore(startOnly) && !todayOnly.isAfter(endOnly);
     final todayIsSunday = todayOnly.weekday == DateTime.sunday;
 
-// "Included in subscription today" means: in window AND not Sunday
-    final isDeliverableDayToday = inWindow && !todayIsSunday;
+    bool isEditableToday(MealType mealType) {
+      final now = DateTime.now();
+      final cutoffHour = mealType == MealType.lunch ? 11 : 17; // 11 AM, 5 PM
+      final cutoff = DateTime(now.year, now.month, now.day, cutoffHour);
+      return now.isBefore(cutoff);
+    }
 
+    final isDeliverableDayToday = inWindow && !todayIsSunday;
+    final isToday = DateTime(now.year, now.month, now.day).isAtSameMomentAs(
+        DateTime.now().copyWith(
+            hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0));
+    final canEditToday = isEditableToday(mealType);
+    final skipActionEnabled = !isToday || (isToday && canEditToday);
     return Card(
       elevation: 2,
       clipBehavior: Clip.antiAlias,
@@ -736,8 +739,8 @@ class SubscriptionCard extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _pill(Icons.calendar_month_rounded, 'Plan Days',
-                        '$exactDays'),
+                    _pill(
+                        Icons.calendar_month_rounded, 'Plan Days', '$planDays'),
                     _pill(Icons.eco_rounded, 'Veg Days', '$vegCount'),
                     _pill(
                         Icons.do_not_disturb_on_rounded, 'Skips', '$skipCount'),
@@ -757,19 +760,27 @@ class SubscriptionCard extends StatelessWidget {
                       onPressed: onEdit,
                       icon: const Icon(Icons.edit_rounded, size: 18),
                       label: const Text('Edit'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
                     ),
                     const Spacer(),
-
-                    // 1) If today is a valid plan day (in range & not Sunday), show toggle
-                    if (isDeliverableDayToday)
-                      FilledButton.icon(
-                        onPressed: () => onToggleAvailability(todaySkipped),
+                    Tooltip(
+                      message: skipActionEnabled
+                          ? (todaySkipped
+                              ? 'Enable delivery for today'
+                              : 'Skip delivery for today')
+                          : (mealType == MealType.lunch
+                              ? 'Lunch for today is locked after 11:00 AM'
+                              : 'Dinner for today is locked after 5:00 PM'),
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: mealDark,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: skipActionEnabled
+                            ? () => onToggleAvailability(todaySkipped)
+                            : null,
                         icon: Icon(
                           todaySkipped
                               ? Icons.check_circle_rounded
@@ -778,38 +789,29 @@ class SubscriptionCard extends StatelessWidget {
                         ),
                         label:
                             Text(todaySkipped ? 'Enable Today' : 'Skip Today'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: mealDark,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 10),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                        ),
                       ),
-
-                    // 2) If plan hasn’t started yet, show “will start on …”
-                    if (!inWindow && todayOnly.isBefore(startOnly))
-                      Text(
-                        'Starts on ${DateFormat('d/M/y').format(startDate)}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black.withOpacity(.7),
-                        ),
-                      ),
-
-                    // 3) If it’s Sunday but in window, show “No delivery today”
-                    if (inWindow && todayIsSunday)
-                      Text(
-                        'No delivery today (Sunday)',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black.withOpacity(.7),
-                        ),
-                      ),
-
-                    // 4) If plan is over, you already show “Expired …” in header; no button.
+                    ),
                   ],
-                )
+                ),
+
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.info_outline,
+                        size: 16, color: Colors.black54),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        mealType == MealType.lunch
+                            ? 'Heads up: Today’s lunch is editable until 11:00 AM.'
+                            : 'Heads up: Today’s dinner is editable until 5:00 PM.',
+                        style: const TextStyle(
+                            fontSize: 12, color: Colors.black54),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -1097,6 +1099,7 @@ class _SubscriptionEditDialogState
   // Keep separate state for each meal so we can show Lunch + Dinner sections.
   late Set<DateTime> skipDatesPrimary;
   late Map<DateTime, DietType> dietOverridesPrimary;
+  late Set<String> vegSetPrimary;
 
   late Set<DateTime> skipDatesSecondary;
   late Map<DateTime, DietType> dietOverridesSecondary;
@@ -1173,21 +1176,14 @@ class _SubscriptionEditDialogState
     allergies = (widget.subscription['allergies'] as List<dynamic>? ?? [])
         .map((e) => e.toString())
         .toSet();
+    vegSetPrimary =
+        readMealDateStrings(widget.subscription['vegDates'], _primary);
   }
 
   @override
   Widget build(BuildContext context) {
     final ingrAsync = ref.watch(ingredientsProvider(widget.mealType));
-    final vegSetPrimary =
-        readMealDateStrings(widget.subscription['vegDates'], _primary);
-    final vegSetSecondary = _isTwoMeals
-        ? readMealDateStrings(widget.subscription['vegDates'], _secondary)
-        : <String>{};
-    final scheduleSecondary =
-        _buildSchedule(startDate, planDays, skipDatesSecondary);
-    final windowSecondary =
-        _buildWindowFromSchedule(startDate, scheduleSecondary);
-    final scheduleSetS = scheduleSecondary.map(_dOnly).toSet();
+
     final schedulePrimary =
         _buildSchedule(startDate, planDays, skipDatesPrimary);
     final windowPrimary = _buildWindowFromSchedule(startDate, schedulePrimary);
@@ -1220,7 +1216,98 @@ class _SubscriptionEditDialogState
               dietOf: (d) => vegSetPrimary.contains(dfmt(d))
                   ? DietType.veg
                   : DietType.nonVeg,
+              isLocked: (day) {
+                final now = DateTime.now();
+                final dOnly = _dateOnly(day);
+                final todayOnly = _dateOnly(now);
+                final isToday = dOnly.isAtSameMomentAs(todayOnly);
+                if (!isToday) return false;
+
+                // Lock exactly at 11:00 / 17:00
+                final cutoffHour = _primary == MealType.lunch ? 11 : 17;
+                final cutoff = DateTime(
+                    todayOnly.year, todayOnly.month, todayOnly.day, cutoffHour);
+                return !now.isBefore(cutoff); // >= cutoff → locked
+              },
               onDayTap: (day) {
+                final now = DateTime.now();
+                print('Tapped day: $day, now: $now');
+                final dOnly = _dateOnly(day);
+                final todayOnly = _dateOnly(now);
+                final isToday = dOnly.isAtSameMomentAs(todayOnly);
+                final cutoffHour = _primary == MealType.lunch ? 11 : 17;
+                final cutoff = DateTime(
+                    todayOnly.year, todayOnly.month, todayOnly.day, cutoffHour);
+                if (isToday) {
+                  // Lock today if past cutoff
+                  if (now.isBefore(cutoff)) {
+                    showModalBottomSheet(
+                      context: context,
+                      showDragHandle: true,
+                      builder: (_) => SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.lock_clock_rounded,
+                                  size: 32,
+                                  color: Colors.red.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                '${_primary.name.capitalize()} Locked',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'You can no longer edit today’s ${_primary.name.toLowerCase()}.\n'
+                                'Changes are allowed only before '
+                                '${_primary == MealType.lunch ? '11:00 AM' : '5:00 PM'}.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  color: Colors.black.withOpacity(.65),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              FilledButton.icon(
+                                onPressed: () => Navigator.pop(context),
+                                icon: const Icon(
+                                    Icons.check_circle_outline_rounded,
+                                    size: 18),
+                                label: const Text('Got it'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.red.shade600,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20, vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                }
+
                 showModalBottomSheet(
                   context: context,
                   showDragHandle: true,
@@ -1240,9 +1327,18 @@ class _SubscriptionEditDialogState
                           skipDatesPrimary.add(day);
                         }
                         if (override != null) {
+                          if (override == DietType.veg) {
+                            vegSetPrimary.add(dfmt(day));
+                          } else {
+                            vegSetPrimary.remove(dfmt(day));
+                          }
                           dietOverridesPrimary[day] = override;
+                          setState(() {});
                         } else {
+                          vegSetPrimary.remove(dfmt(day));
+
                           dietOverridesPrimary.remove(day);
+                          setState(() {});
                         }
                       });
                     },
@@ -1250,53 +1346,53 @@ class _SubscriptionEditDialogState
                 );
               },
             ),
-            if (_isTwoMeals) ...[
-              const SizedBox(height: 16),
-              _SectionTitle(
-                widget.mealType == MealType.lunch
-                    ? Icons.wb_sunny_rounded
-                    : Icons.nightlight_round_rounded,
-                '${_secondary.name.capitalize()} Dates',
-              ),
-              const SizedBox(height: 8),
-              _CalendarGridWindow(
-                window: windowSecondary,
-                isDelivery: (day) => scheduleSetS.contains(_dOnly(day)),
-                isSkipped: (day) => skipDatesSecondary.contains(_dOnly(day)),
-                dietOf: (d) => vegSetSecondary.contains(dfmt(d))
-                    ? DietType.veg
-                    : DietType.nonVeg,
-                onDayTap: (day) {
-                  showModalBottomSheet(
-                    context: context,
-                    showDragHandle: true,
-                    builder: (_) => _DayEditSheet(
-                      day: day,
-                      isAvailable: !skipDatesSecondary.contains(day),
-                      isAvailableSecondary: false,
-                      currentOverride: dietOverridesSecondary[day],
-                      isTwoMeals: _isTwoMeals,
-                      primaryMealType: _secondary,
-                      isPrimaryMeal: false,
-                      onSave: (available, _, override) {
-                        setState(() {
-                          if (available) {
-                            skipDatesSecondary.remove(day);
-                          } else {
-                            skipDatesSecondary.add(day);
-                          }
-                          if (override != null) {
-                            dietOverridesSecondary[day] = override;
-                          } else {
-                            dietOverridesSecondary.remove(day);
-                          }
-                        });
-                      },
-                    ),
-                  );
-                },
-              ),
-            ],
+            // if (_isTwoMeals) ...[
+            //   const SizedBox(height: 16),
+            //   _SectionTitle(
+            //     widget.mealType == MealType.lunch
+            //         ? Icons.wb_sunny_rounded
+            //         : Icons.nightlight_round_rounded,
+            //     '${_secondary.name.capitalize()} Dates',
+            //   ),
+            //   const SizedBox(height: 8),
+            //   _CalendarGridWindow(
+            //     window: windowSecondary,
+            //     isDelivery: (day) => scheduleSetS.contains(_dOnly(day)),
+            //     isSkipped: (day) => skipDatesSecondary.contains(_dOnly(day)),
+            //     dietOf: (d) => vegSetSecondary.contains(dfmt(d))
+            //         ? DietType.veg
+            //         : DietType.nonVeg,
+            //     onDayTap: (day) {
+            //       showModalBottomSheet(
+            //         context: context,
+            //         showDragHandle: true,
+            //         builder: (_) => _DayEditSheet(
+            //           day: day,
+            //           isAvailable: !skipDatesSecondary.contains(day),
+            //           isAvailableSecondary: false,
+            //           currentOverride: dietOverridesSecondary[day],
+            //           isTwoMeals: _isTwoMeals,
+            //           primaryMealType: _secondary,
+            //           isPrimaryMeal: false,
+            //           onSave: (available, _, override) {
+            //             setState(() {
+            //               if (available) {
+            //                 skipDatesSecondary.remove(day);
+            //               } else {
+            //                 skipDatesSecondary.add(day);
+            //               }
+            //               if (override != null) {
+            //                 dietOverridesSecondary[day] = override;
+            //               } else {
+            //                 dietOverridesSecondary.remove(day);
+            //               }
+            //             });
+            //           },
+            //         ),
+            //       );
+            //     },
+            //   ),
+            // ],
             const SizedBox(height: 18),
             if (ingrAsync.hasValue &&
                 (ingrAsync.value?.isNotEmpty ?? false)) ...[
@@ -1427,7 +1523,7 @@ class _SubscriptionEditDialogState
 /// - SKIPPED DAY badge (top-right)
 /// - SUNDAY badge (top-right)
 /// Delivery tiles get green background; skipped = red; sunday = grey.
-class _CalendarGridWindow extends StatelessWidget {
+class _CalendarGridWindow extends StatefulWidget {
   final List<DateTime> window; // all days in the window (date-only)
   final bool Function(DateTime)
       isDelivery; // true only for actual delivery dates
@@ -1436,17 +1532,23 @@ class _CalendarGridWindow extends StatelessWidget {
       dietOf; // return diet for delivery day; null for non-delivery
   final void Function(DateTime) onDayTap;
   final bool showLegend;
+  final bool Function(DateTime day)? isLocked;
 
-  const _CalendarGridWindow({
-    super.key,
-    required this.window,
-    required this.isDelivery,
-    required this.isSkipped,
-    required this.dietOf,
-    required this.onDayTap,
-    this.showLegend = true,
-  });
+  const _CalendarGridWindow(
+      {super.key,
+      required this.window,
+      required this.isDelivery,
+      required this.isSkipped,
+      required this.dietOf,
+      required this.onDayTap,
+      this.showLegend = true,
+      this.isLocked});
 
+  @override
+  State<_CalendarGridWindow> createState() => _CalendarGridWindowState();
+}
+
+class _CalendarGridWindowState extends State<_CalendarGridWindow> {
   @override
   Widget build(BuildContext context) {
     final todayOnly = dateOnly(DateTime.now()); // your existing helper
@@ -1454,18 +1556,18 @@ class _CalendarGridWindow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (showLegend) _legendRow(),
-        if (showLegend) const SizedBox(height: 8),
-        if (window.isEmpty)
+        if (widget.showLegend) _legendRow(),
+        if (widget.showLegend) const SizedBox(height: 8),
+        if (widget.window.isEmpty)
           const Text('No dates in range.')
         else
           Wrap(
             spacing: 10,
             runSpacing: 10,
-            children: window.map((day) {
+            children: widget.window.map((day) {
               final sunday = day.weekday == DateTime.sunday;
-              final skipped = isSkipped(day);
-              final delivery = isDelivery(day);
+              final skipped = widget.isSkipped(day);
+              final delivery = widget.isDelivery(day);
               final isPast = day.isBefore(todayOnly);
 
               // Background + border priority: SUNDAY > SKIPPED > DELIVERY > OTHER
@@ -1505,7 +1607,7 @@ class _CalendarGridWindow extends StatelessWidget {
                 overlayIcon = Icons.block_rounded;
                 overlayColor = Colors.red.shade700;
               } else if (delivery) {
-                final DietType? diet = dietOf(day);
+                final DietType? diet = widget.dietOf(day);
                 if (diet != null) {
                   if (diet == DietType.veg) {
                     overlayIcon = Icons.eco_rounded;
@@ -1520,7 +1622,7 @@ class _CalendarGridWindow extends StatelessWidget {
               return GestureDetector(
                 onTap: () {
                   if (!isPast && (delivery || skipped)) {
-                    onDayTap(day);
+                    widget.onDayTap(day);
                   }
                 },
                 child: Opacity(
@@ -1600,8 +1702,6 @@ class _CalendarGridWindow extends StatelessWidget {
       ],
     );
   }
-
-
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -1651,7 +1751,7 @@ class _DatePickerTile extends StatelessWidget {
   }
 }
 
-class _DayEditSheet extends StatelessWidget {
+class _DayEditSheet extends StatefulWidget {
   final DateTime day;
   final bool isAvailable;
   final bool isAvailableSecondary;
@@ -1673,6 +1773,11 @@ class _DayEditSheet extends StatelessWidget {
     required this.onSave,
   });
 
+  @override
+  State<_DayEditSheet> createState() => _DayEditSheetState();
+}
+
+class _DayEditSheetState extends State<_DayEditSheet> {
   IconData _mealIcon(MealType mealType) =>
       mealType == MealType.lunch ? Icons.wb_sunny : Icons.nightlight_round;
 
@@ -1681,11 +1786,11 @@ class _DayEditSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    bool available = isAvailable;
-    bool availableSecondary = isAvailableSecondary;
-    DietType? override = currentOverride;
+    bool available = widget.isAvailable;
+    bool availableSecondary = widget.isAvailableSecondary;
+    DietType? override = widget.currentOverride;
 
-    final mealC = _mealColor(primaryMealType, context);
+    final mealC = _mealColor(widget.primaryMealType, context);
 
     return StatefulBuilder(
       builder: (context, setState) => SafeArea(
@@ -1697,9 +1802,10 @@ class _DayEditSheet extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(_mealIcon(primaryMealType), color: mealC),
+                  Icon(_mealIcon(widget.primaryMealType), color: mealC),
                   const SizedBox(width: 8),
-                  Text('Customize ${day.day}/${day.month}/${day.year}',
+                  Text(
+                      'Customize ${widget.day.day}/${widget.day.month}/${widget.day.year}',
                       style: const TextStyle(
                           fontWeight: FontWeight.w800, fontSize: 16)),
                 ],
@@ -1711,9 +1817,10 @@ class _DayEditSheet extends StatelessWidget {
                   color: Colors.black.withOpacity(.03),
                 ),
                 child: SwitchListTile(
-                  title: Text("I'm available for ${primaryMealType.name}"),
+                  title:
+                      Text("I'm available for ${widget.primaryMealType.name}"),
                   value: available,
-                  onChanged: day.weekday == DateTime.sunday
+                  onChanged: widget.day.weekday == DateTime.sunday
                       ? null
                       : (v) => setState(() => available = v),
                 ),
@@ -1729,13 +1836,13 @@ class _DayEditSheet extends StatelessWidget {
                 selected: {override == DietType.veg ? 1 : 0},
                 onSelectionChanged: (s) {
                   final v = s.first;
-                  setState(() => override = v == 1 ? DietType.veg : null);
+                  setState(() => override = (v == 1) ? DietType.veg : null);
                 },
               ),
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: () {
-                  onSave(available, availableSecondary, override);
+                  widget.onSave(available, availableSecondary, override);
                   Navigator.pop(context);
                 },
                 child: const Text('Save'),

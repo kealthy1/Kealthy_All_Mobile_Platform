@@ -306,7 +306,7 @@ class _LocationPageState extends ConsumerState<LocationPage> {
                                         "Driving distance: ${drivingDistanceInKm?.toStringAsFixed(2)} km");
 
                                     if (drivingDistanceInKm != null &&
-                                        drivingDistanceInKm > 12) {
+                                        drivingDistanceInKm > 20) {
                                       ToastHelper.showErrorToast(
                                           'Location not serviceable');
 
