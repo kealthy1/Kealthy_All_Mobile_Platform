@@ -1,4 +1,5 @@
 // sub_view_page.dart (enhanced UI)
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,69 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kealthy/view/subscription/sub_details.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:animate_do/animate_do.dart';
+
+import 'package:intl/intl.dart'; // at top if not already
+
+enum SubscriptionStatus { active, future, inactive }
+
+int statusRank(SubscriptionStatus s) {
+  switch (s) {
+    case SubscriptionStatus.active:
+      return 0; // FIRST
+    case SubscriptionStatus.future:
+      return 1; // MIDDLE
+    case SubscriptionStatus.inactive:
+      return 2; // LAST
+  }
+}
+
+DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+DateTime? _toDate(dynamic raw) {
+  try {
+    if (raw == null) return null;
+    if (raw is DateTime) return _dateOnly(raw);
+    if (raw is int) return _dateOnly(DateTime.fromMillisecondsSinceEpoch(raw));
+    if (raw is double)
+      return _dateOnly(DateTime.fromMillisecondsSinceEpoch(raw.toInt()));
+    // Firestore Timestamp
+    try {
+      if (raw is dynamic && raw.seconds is int) {
+        return _dateOnly(
+            DateTime.fromMillisecondsSinceEpoch(raw.seconds * 1000));
+      }
+    } catch (_) {}
+    if (raw is String && raw.isNotEmpty) {
+      // Try “dd MMMM yyyy” e.g., “24 September 2025”
+      try {
+        return _dateOnly(DateFormat('dd MMMM yyyy', 'en_US').parse(raw));
+      } catch (_) {
+        return _dateOnly(DateTime.parse(raw));
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+SubscriptionStatus statusOfDates(DateTime? start, DateTime? end) {
+  final today = _dateOnly(DateTime.now());
+  final startsInFuture = start != null && start.isAfter(today);
+  final ended = end != null && end.isBefore(today);
+  if (startsInFuture) return SubscriptionStatus.future;
+  if (ended) return SubscriptionStatus.inactive;
+  return SubscriptionStatus.active;
+}
+
+// Build an indexed, enriched list (keeps original index for total stability)
+
+String _shortDate(DateTime d) => DateFormat("d MMM").format(d); // e.g., 5 Oct
+DateTime _dOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+const kBlue = Color.fromARGB(255, 4, 131, 199); // primary blue
+const kBlueDark = Color(0xFF0369A1); // darker blue for emphasis
+const kBlueSurface = Color(0xFFF0F9FF); // soft blue background
+const kBlueSurface2 = Color.fromARGB(255, 241, 247, 250);
+const kSlate = Color(0xFF334155); // dark grey-blue for text/icons
 
 // --- DATA (unchanged) --------------------------------------------------------
 final subscriptionOrderProvider =
@@ -31,11 +95,11 @@ final subscriptionOrderProvider =
   }
   return [];
 });
-const _milkBg = Color(0xFFF8FBFF); // page background (milky white)
-const _milkBlue = Color(0xFF0EA5E9); // primary dairy blue
-const _milkBlueLight = Color(0xFFE0F2FF);
-const _cream = Color(0xFFFFF7ED); // subtle cream accent
-const _goodGreen = Color(0xFF22C55E);
+const _milkBg = kBlueSurface; // page background (milky white)
+const _milkBlue = kBlue; // primary dairy blue
+const _milkBlueLight = kBlueSurface2;
+const _cream = kBlueSurface; // subtle cream accent
+const _goodGreen = kBlue;
 const _danger = Color(0xFFEF4444);
 
 class SubscriptionOrderDetailsPage extends ConsumerWidget {
@@ -65,20 +129,20 @@ class SubscriptionOrderDetailsPage extends ConsumerWidget {
             const SizedBox(width: 10),
             Text('Milk Subscriptions',
                 style: GoogleFonts.poppins(
-                  color: Colors.black,
+                  color: kSlate,
                   fontWeight: FontWeight.w800,
                 )),
           ],
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: Colors.black12),
+          child: Container(height: 1, color: Colors.blue.shade600),
         ),
       ),
       floatingActionButton: FadeInUp(
         child: FloatingActionButton(
           tooltip: 'Add New Subscription',
-          backgroundColor: const Color(0xFF3a5a40),
+          backgroundColor: Colors.blue.shade600,
           elevation: 4,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
@@ -106,7 +170,65 @@ class SubscriptionOrderDetailsPage extends ConsumerWidget {
           ),
         ),
         data: (orders) {
-          if (orders.isEmpty) {
+          final enriched = <({
+            Map<String, dynamic> m,
+            SubscriptionStatus st,
+            DateTime? start,
+            DateTime? end,
+            int idx,
+          })>[];
+          for (var i = 0; i < orders.length; i++) {
+            final m = orders[i];
+            final start = _toDate(m['startDate']);
+            final end = _toDate(m['endDate']);
+            final st = statusOfDates(start, end);
+            enriched.add((m: m, st: st, start: start, end: end, idx: i));
+          }
+
+          enriched.sort((a, b) {
+            final rankCmp = statusRank(a.st).compareTo(statusRank(b.st));
+            if (rankCmp != 0) return rankCmp;
+
+            // Within same group:
+            switch (a.st) {
+              case SubscriptionStatus.active:
+                // Active: earlier end first (soon-to-expire higher)
+                if (a.end != null && b.end != null) {
+                  final c = a.end!.compareTo(b.end!);
+                  if (c != 0) return c;
+                } else if (a.end != null)
+                  return -1;
+                else if (b.end != null) return 1;
+                break;
+
+              case SubscriptionStatus.future:
+                // Future: earlier start first
+                if (a.start != null && b.start != null) {
+                  final c = a.start!.compareTo(b.start!);
+                  if (c != 0) return c;
+                } else if (a.start != null)
+                  return -1;
+                else if (b.start != null) return 1;
+                break;
+
+              case SubscriptionStatus.inactive:
+                // Inactive: most recently ended first (later end first)
+                if (a.end != null && b.end != null) {
+                  final c = b.end!.compareTo(a.end!);
+                  if (c != 0) return c;
+                } else if (a.end != null)
+                  return -1;
+                else if (b.end != null) return 1;
+                break;
+            }
+
+            // Final deterministic fallback (stable): original index
+            return a.idx.compareTo(b.idx);
+          });
+
+          final sorted = enriched.map((e) => e.m).toList();
+          print('Sorted subscriptions2: $sorted');
+          if (sorted.isEmpty) {
             return FadeInUp(
               duration: const Duration(milliseconds: 800),
               child: _EmptyState(
@@ -117,16 +239,16 @@ class SubscriptionOrderDetailsPage extends ConsumerWidget {
             );
           }
           return RefreshIndicator(
-            color: const Color(0xFF3a5a40),
+            color: Colors.blue.shade600,
             backgroundColor: const Color(0xFFf8f5f0),
             onRefresh: () async => ref.refresh(subscriptionOrderProvider),
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-              itemCount: orders.length,
+              itemCount: sorted.length,
               separatorBuilder: (_, __) => const SizedBox(height: 16),
               itemBuilder: (context, i) => FadeInUp(
                 duration: Duration(milliseconds: 600 + (i * 100)),
-                child: _SubscriptionTile(data: orders[i]),
+                child: _SubscriptionTile(data: sorted[i]),
               ),
             ),
           );
@@ -146,6 +268,7 @@ class _SubscriptionTile extends StatefulWidget {
 
 class _SubscriptionTileState extends State<_SubscriptionTile> {
   bool _expanded = false;
+
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   bool _isServiceDay(DateTime d) => d.weekday != DateTime.sunday;
@@ -173,8 +296,42 @@ class _SubscriptionTileState extends State<_SubscriptionTile> {
     return out;
   }
 
+  // Robust date parsing for Firestore
+  DateTime? _toDate(dynamic raw) {
+    try {
+      if (raw == null) return null;
+      if (raw is DateTime) return raw;
+      if (raw is int) return DateTime.fromMillisecondsSinceEpoch(raw);
+      if (raw is Timestamp) return raw.toDate();
+      if (raw is String && raw.isNotEmpty) {
+        // Try parsing "DD MMMM YYYY" format (e.g., "28 September 2025")
+        try {
+          final formatter = DateFormat('dd MMMM yyyy');
+          return formatter.parse(raw);
+        } catch (_) {
+          // Fallback to ISO 8601 or other formats
+          return DateTime.parse(raw);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('Error parsing date: $raw, error: $e');
+      return null;
+    }
+  }
+
+  String _shortDate(DateTime d) {
+    return '${d.day}/${d.month}/${d.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final todayOnly = _dateOnly(now);
+
+    late final String statusText;
+    late final IconData statusIcon;
+    late final Color statusColor;
     final data = widget.data;
     final bool isAlternate = (data['alternateDay'] == true);
     final String frequencyLabel = isAlternate ? 'Alternate Day' : 'Daily';
@@ -188,11 +345,8 @@ class _SubscriptionTileState extends State<_SubscriptionTile> {
     final orderId = (data['orderId'] ?? '').toString();
     final amount = (data['totalAmountToPay'] ?? '').toString();
 
-    // Optional milk metadata
     final milkType = (data['milkType'] ?? '').toString();
     final fat = (data['fatPercent'] ?? '').toString();
-
-    // Extra DB fields (only shown in expanded view if present)
     final da = (data['DA'] ?? '').toString();
     final daMobile = (data['DAMOBILE'] ?? '').toString();
     final assignedTo = (data['assignedto'] ?? '').toString();
@@ -206,6 +360,52 @@ class _SubscriptionTileState extends State<_SubscriptionTile> {
     final ean = (data['item_ean'] ?? '').toString();
     final fcm = (data['fcm_token'] ?? '').toString();
 
+    final dynamic startRaw = data['startDate'];
+    final dynamic endRaw = data['endDate'];
+
+    final DateTime? startDate = _toDate(startRaw);
+    final DateTime? endDate = _toDate(endRaw);
+
+    // Default to today for startDate if null, far future for endDate if null
+    final effectiveStartDate = startDate ?? now;
+    final effectiveEndDate =
+        endDate ?? DateTime.now().add(Duration(days: 365 * 10));
+
+    // Status logic
+    final bool startsInFuture =
+        _dateOnly(effectiveStartDate).isAfter(todayOnly);
+    final bool ended =
+        endDate != null && _dateOnly(endDate).isBefore(todayOnly);
+    final bool activeNow = !startsInFuture && !ended;
+
+    print(
+        'Raw startDate: $startRaw, Parsed: $startDate, Effective: $effectiveStartDate');
+    print(
+        'Raw endDate: $endRaw, Parsed: $endDate, Effective: $effectiveEndDate');
+    print(
+        'startsInFuture: $startsInFuture, ended: $ended, activeNow: $activeNow');
+
+    // Set status text, icon, and color
+    if (startsInFuture) {
+      print('Status: Starts ${_shortDate(effectiveStartDate)}');
+      statusText = 'Starts ${_shortDate(effectiveStartDate)}';
+      statusIcon = Icons.schedule_rounded;
+      statusColor = _milkBlue;
+    } else if (activeNow) {
+      print('Status: Active');
+      statusText = 'Active';
+      statusIcon = Icons.check_circle_rounded;
+      statusColor = Colors.green;
+    } else {
+      print('Status: Inactive');
+      statusText = 'Inactive';
+      statusIcon = Icons.remove_circle_rounded;
+      statusColor = kSlate.withOpacity(.6);
+    }
+
+    // Correct isActive to reflect active subscriptions
+    final bool isActive = activeNow;
+
     String _mask(String s, {int keepStart = 6, int keepEnd = 4}) {
       if (s.isEmpty) return '';
       if (s.length <= keepStart + keepEnd) return '•••';
@@ -216,198 +416,218 @@ class _SubscriptionTileState extends State<_SubscriptionTile> {
 
     return GestureDetector(
       onTap: () => setState(() => _expanded = !_expanded),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(
-                color: Color(0x14000000), blurRadius: 12, offset: Offset(0, 6)),
-          ],
-          border: Border.all(color: Colors.black12),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Header row (unchanged style)
-            Row(children: [
+      child: Opacity(
+        opacity: isActive ? 1.0 : 0.55,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 12,
+                  offset: Offset(0, 6)),
+            ],
+            border: Border.all(color: Colors.blue.shade100),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(15.0),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Container(
-                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [_milkBlueLight, Colors.white],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: _milkBlue,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: _milkBlue.withOpacity(.20)),
                 ),
-                child: const Icon(Icons.local_drink_rounded, color: _milkBlue),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(planTitle.isEmpty ? 'Milk Subscription' : planTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
-                              fontSize: 16, fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 2),
-                      Text(product,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                  child: Row(children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _milkBlueLight,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _milkBlue.withOpacity(.20)),
+                      ),
+                      child: const Icon(Icons.local_drink_rounded,
+                          color: _milkBlue),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            planTitle.isEmpty ? 'Milk Subscription' : planTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            product,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
                               fontSize: 12.5,
-                              color: Colors.black.withOpacity(.65))),
-                    ]),
-              ),
-              const SizedBox(width: 8),
-              _MilkBadge(
-                  icon: Icons.local_fire_department_rounded,
-                  text: '${qty.isEmpty ? '--' : qty} L/day',
-                  color: _goodGreen),
-            ]),
-
-            const SizedBox(height: 12),
-            const _DividerThin(),
-
-            // Milk chips
-            const SizedBox(height: 8),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              if (milkType.isNotEmpty)
-                const _ChipPill(icon: Icons.pets_rounded, text: 'Type')
-                    .withValue(milkType),
-              if (fat.isNotEmpty)
-                const _ChipPill(icon: Icons.percent_rounded, text: 'Fat')
-                    .withValue('$fat%'),
-              if (slot.isNotEmpty)
-                const _ChipPill(icon: Icons.schedule_rounded, text: 'Slot')
-                    .withValue(slot),
-              _ChipPill(icon: Icons.repeat_rounded, text: frequencyLabel),
-            ]),
-
-            // Primary details
-            const SizedBox(height: 8),
-            _InfoRow(label: 'Order ID', value: orderId, copyable: true),
-            _InfoRow(label: 'Start', value: start),
-            const SizedBox(height: 15),
-
-            _InfoRow(label: 'End', value: end),
-
-            const SizedBox(height: 10),
-
-            // Expand / collapse controller row
-            Row(children: [
-              TextButton.icon(
-                onPressed: () => setState(() => _expanded = !_expanded),
-                icon: const Icon(Icons.receipt_long_rounded, size: 18),
-                label: Text(_expanded ? 'Less' : 'More'),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.black.withOpacity(.75),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Opacity(
+                      opacity: isActive ? 1.0 : 0.55,
+                      child: _MilkBadge(
+                        icon: statusIcon,
+                        text: statusText,
+                        color: statusColor,
+                      ),
+                    )
+                  ]),
                 ),
               ),
-              const Spacer(),
-              Container(
-                decoration: BoxDecoration(
-                  color: _cream.withOpacity(.55),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFFFE7CF)),
-                ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(children: [
-                  const Icon(Icons.currency_rupee_rounded,
-                      size: 18, color: Colors.black87),
-                  const SizedBox(width: 6),
-                  Text('Total',
-                      style: GoogleFonts.poppins(
-                          fontSize: 12.5,
-                          color: Colors.black54,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(width: 8),
-                  Text('₹$amount',
-                      style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w900, fontSize: 14)),
+              const SizedBox(height: 12),
+              const _DividerThin(),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                child: Wrap(spacing: 8, runSpacing: 8, children: [
+                  if (milkType.isNotEmpty)
+                    const _ChipPill(icon: Icons.pets_rounded, text: 'Type')
+                        .withValue(milkType),
+                  if (fat.isNotEmpty)
+                    const _ChipPill(icon: Icons.percent_rounded, text: 'Fat')
+                        .withValue('$fat%'),
+                  if (slot.isNotEmpty)
+                    const _ChipPill(icon: Icons.schedule_rounded, text: 'Slot')
+                        .withValue(slot),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _ChipPill(
+                          icon: Icons.repeat_rounded, text: frequencyLabel),
+                      _MilkBadge(
+                        icon: Icons.local_fire_department_rounded,
+                        text: '${qty.isEmpty ? '--' : qty} L/day',
+                        color: _goodGreen,
+                      ),
+                    ],
+                  ),
                 ]),
               ),
-            ]),
+              const SizedBox(height: 8),
+              _InfoRow(label: 'Order ID', value: orderId, copyable: true),
+              _InfoRow(label: 'Start', value: start),
+              const SizedBox(height: 15),
+              _InfoRow(label: 'End', value: end),
+              const SizedBox(height: 10),
+              Row(children: [
+                TextButton.icon(
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                  label: Text(_expanded ? 'Less' : 'More'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: kSlate.withOpacity(.75),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  decoration: BoxDecoration(
+                    color: _cream.withOpacity(.55),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: kBlueSurface2),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(children: [
+                    Icon(Icons.currency_rupee_rounded,
+                        size: 18, color: kBlueDark),
+                    const SizedBox(width: 6),
+                    Text('Total',
+                        style: GoogleFonts.poppins(
+                            fontSize: 12.5,
+                            color: kBlue,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(width: 8),
+                    Text('₹$amount',
+                        style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w900, fontSize: 14)),
+                  ]),
+                ),
+              ]),
+              AnimatedCrossFade(
+                firstChild: const SizedBox.shrink(),
+                secondChild: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 10),
+                    const _DividerThin(),
+                    const SizedBox(height: 10),
+                    Text('More Details',
+                        style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w800, fontSize: 13.5)),
+                    const SizedBox(height: 8),
+                    if (isAlternate) ...[
+                      const SizedBox(height: 6),
+                      Builder(builder: (_) {
+                        final startDt = effectiveStartDate;
+                        final endDt = effectiveEndDate;
+                        final upcoming = _nextUpcoming(
+                          from: DateTime.now(),
+                          start: startDt,
+                          end: endDt,
+                          alternate: isAlternate,
+                          count: 3,
+                        );
 
-            // --- EXPANDED CONTENT ---
-            AnimatedCrossFade(
-              firstChild: const SizedBox.shrink(),
-              secondChild: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 10),
-                  const _DividerThin(),
-                  const SizedBox(height: 10),
-                  Text('More Details',
-                      style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w800, fontSize: 13.5)),
-                  const SizedBox(height: 8),
-                  if (isAlternate) ...[
-                    const SizedBox(height: 6),
-                    Builder(builder: (_) {
-                      DateTime tryParse(String s) {
-                        try {
-                          return DateTime.parse(s);
-                        } catch (_) {
-                          return DateTime.now();
-                        }
-                      }
+                        String fmt(DateTime d) =>
+                            '${d.day}/${d.month}/${d.year}';
+                        final label = upcoming.isEmpty
+                            ? 'No upcoming deliveries'
+                            : upcoming.map(fmt).join(', ');
 
-                      final startDt = tryParse(start);
-                      final endDt = tryParse(end);
-                      final upcoming = _nextUpcoming(
-                        from: DateTime.now(),
-                        start: startDt,
-                        end: endDt,
-                        alternate: true,
-                        count: 3,
-                      );
-
-                      String fmt(DateTime d) => '${d.day}/${d.month}/${d.year}';
-                      final label = upcoming.isEmpty
-                          ? 'No upcoming deliveries'
-                          : upcoming.map(fmt).join(', ');
-
-                      return _InfoRow(label: 'Upcoming', value: label);
-                    }),
+                        return _InfoRow(label: 'Upcoming', value: label);
+                      }),
+                    ],
+                    const SizedBox(height: 15),
+                    _InfoRow(label: 'Payment', value: payment),
+                    _InfoRow(label: 'Phone', value: phone, copyable: true),
+                    _InfoRow(label: 'Landmark', value: landmark),
+                    const SizedBox(height: 10),
+                    _InfoRow(label: 'Directions', value: directions),
+                    const SizedBox(height: 10),
+                    _InfoRow(label: 'Distance (km)', value: distance),
+                    const SizedBox(height: 10),
+                    _InfoRow(
+                        label: 'Delivery Fee', value: deliveryFee.toString()),
+                    const SizedBox(height: 10),
+                    _InfoRow(label: 'Delivery By', value: da),
+                    const SizedBox(height: 10),
+                    _InfoRow(
+                        label: 'DA Mobile', value: daMobile, copyable: true),
+                    const SizedBox(height: 10),
+                    _InfoRow(label: 'Assigned To', value: assignedTo),
                   ],
-                  const SizedBox(height: 15),
-                  _InfoRow(label: 'Payment', value: payment),
-                  const SizedBox(height: 10),
-                  _InfoRow(label: 'Phone', value: phone, copyable: true),
-                  _InfoRow(label: 'Landmark', value: landmark),
-                  const SizedBox(height: 10),
-                  _InfoRow(label: 'Directions', value: directions),
-                  const SizedBox(height: 10),
-                  _InfoRow(label: 'Distance (km)', value: distance),
-                  const SizedBox(height: 10),
-                  _InfoRow(
-                      label: 'Delivery Fee', value: deliveryFee.toString()),
-                  const SizedBox(height: 10),
-                  _InfoRow(label: 'Delivery By', value: da),
-                  const SizedBox(height: 10),
-                  _InfoRow(label: 'DA Mobile', value: daMobile, copyable: true),
-                  const SizedBox(height: 10),
-                  _InfoRow(label: 'Assigned To', value: assignedTo),
-                ],
+                ),
+                crossFadeState: _expanded
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
+                duration: const Duration(milliseconds: 200),
+                sizeCurve: Curves.easeOutCubic,
               ),
-              crossFadeState: _expanded
-                  ? CrossFadeState.showSecond
-                  : CrossFadeState.showFirst,
-              duration: const Duration(milliseconds: 200),
-              sizeCurve: Curves.easeOutCubic,
-            ),
-          ]),
+            ]),
+          ),
         ),
       ),
     );
@@ -448,7 +668,7 @@ class _DividerThin extends StatelessWidget {
   const _DividerThin();
   @override
   Widget build(BuildContext context) {
-    return Container(height: 1, color: Colors.black12);
+    return Container(height: 1, color: kBlue);
   }
 }
 
@@ -474,7 +694,7 @@ class _InfoRow extends StatelessWidget {
                     height: 0.5,
                     fontWeight: FontWeight.w600,
                     fontSize: 13.5,
-                    color: Colors.black87)),
+                    color: kBlueDark)),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -483,7 +703,7 @@ class _InfoRow extends StatelessWidget {
                 child: SelectableText(
                   v,
                   style: GoogleFonts.poppins(
-                      height: 0.3, fontSize: 12.5, color: Colors.black87),
+                      height: 0.3, fontSize: 12.5, color: kBlueDark),
                   maxLines: 2,
                 ),
               ),
@@ -578,7 +798,7 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 6),
             Text(subtitle,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(color: Colors.black54)),
+                style: GoogleFonts.poppins(color: kBlueSurface2)),
           ],
         ),
       ),
