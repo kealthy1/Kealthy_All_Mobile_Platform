@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 final selectedPaymentProvider = StateProvider<String>((ref) => '');
 final isOrderSavingProvider = StateProvider<bool>((ref) => false);
+final foodSubcategoryNamesProvider = FutureProvider<Set<String>>((ref) async {
+  try {
+    final snap =
+        await FirebaseFirestore.instance.collection('foodSubcategory').get();
+
+    final setData = snap.docs
+        .map((d) => (d.data()['Categories'] as String?)?.trim())
+        .whereType<String>()
+        .map((s) => s.toLowerCase()) // normalize
+        .toSet();
+    print('setData: $setData');
+
+    if (setData.isEmpty) {
+      debugPrint('foodSubcategoryNamesProvider: fetched 0 categories');
+    }
+    return setData;
+  } catch (e, st) {
+    debugPrint('foodSubcategoryNamesProvider ERROR: $e\n$st');
+    rethrow;
+  }
+});
 
 class PaymentPage extends ConsumerStatefulWidget {
   final String initialPaymentMethod;
@@ -115,20 +137,39 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
     VoidCallback onTap,
   ) {
     final cartItems = ref.watch(cartProvider);
-    final cartTypes = cartItems.map((item) => item.type).toSet();
+    final cartTypes = cartItems
+        .map((item) => item.type?.toString().trim().toLowerCase())
+        .whereType<String>()
+        .toSet();
     final trialDishesByType = {
       for (var type in cartTypes) type: ref.watch(dishesProvider(type)),
     };
+    print('trialDishesByType.keys: ${trialDishesByType.keys}');
 
-    final allTrialDishes = trialDishesByType.values
-        .whereType<AsyncData<List<TrialDish>>>()
-        .expand((async) => async.value)
-        .toList();
+    final namesAsync = ref.watch(foodSubcategoryNamesProvider);
 
-    final trialDishNames = allTrialDishes.map((d) => d.name).toSet();
-    final isDisabled = title == "Cash on Delivery" &&
-        cartItems.any((item) => trialDishNames.contains(item.name));
+    final match = namesAsync.when(
+      data: (categoryNames) {
+        print('categoryNames: $categoryNames');
+        final result = trialDishesByType.keys.any((type) {
+          final contains = categoryNames.contains(type);
+          print('Checking type: $type, contains: $contains');
+          return contains;
+        });
+        return result;
+      },
+      loading: () {
+        print('namesAsync is loading');
+        return false; // Fallback for loading state
+      },
+      error: (error, stack) {
+        debugPrint('Error in foodSubcategoryNamesProvider: $error\n$stack');
+        return false; // Fallback for error state
+      },
+    );
+    print('match: $match');
 
+    final isDisabled = title == 'Cash on Delivery' && match;
     return GestureDetector(
       onTap: isDisabled ? null : onTap,
       child: Opacity(
@@ -265,7 +306,6 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
     final trialcategory = allTrialDishes.map((d) => d.category).toList();
 
     final trialDishNames = allTrialDishes.map((d) => d.name).toSet();
-
     final hasFoodItem =
         cartItems.any((item) => trialDishNames.contains(item.name));
 

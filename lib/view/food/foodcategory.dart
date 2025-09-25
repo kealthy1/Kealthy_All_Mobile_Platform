@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:kealthy/view/food/expert_recipies.dart';
 import 'package:kealthy/view/food/food_subcategory.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -44,7 +45,8 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
             'Tuna',
             'Salads',
             "Vegetarian",
-            "Probiotic"
+            "Probiotic",
+            'Expert Recipies'
           ];
 
           final categories = snapshot.data?.docs.map((doc) {
@@ -58,79 +60,102 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
             final indexB = customOrder.indexOf(b['Categories']);
             return indexA.compareTo(indexB);
           });
-          print('categories: $categories');
           if (categories != null) {
             preloadCategoryImages(categories);
           }
 
-          return Center(
-            child: Column(
-              children: [
-                Wrap(
-                  spacing: 12.0,
-                  runSpacing: 12.0,
-                  children: categories?.map((category) {
-                        return GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              CupertinoPageRoute(
-                                builder: (context) => FoodSubCategoryPage(
-                                  categoryName:
-                                      category['Categories'] as String,
-                                ),
+          return SingleChildScrollView(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Wrap(
+                    spacing: 12.0,
+                    runSpacing: 12.0,
+                    alignment: WrapAlignment.center,
+                    children: categories?.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final category = entry.value;
+                          // Check if this is the last item and the total count is odd
+                          final isLastAndOdd = index == categories.length - 1 &&
+                              categories.length % 2 != 0;
+
+                          return GestureDetector(
+                            // In the GestureDetector's onTap:
+                            onTap: () {
+                              final categoryName =
+                                  category['Categories'] as String;
+                              if (categoryName == 'Expert Recipies') {
+                                Navigator.push(
+                                  context,
+                                  CupertinoPageRoute(
+                                    builder: (context) =>
+                                        const ExpertRecipesPage(),
+                                  ),
+                                );
+                              } else {
+                                Navigator.push(
+                                  context,
+                                  CupertinoPageRoute(
+                                    builder: (context) => FoodSubCategoryPage(
+                                      categoryName: categoryName,
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            child: Container(
+                              width:
+                                  (MediaQuery.of(context).size.width - 65) / 2,
+                              alignment: isLastAndOdd ? Alignment.center : null,
+                              child: Column(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8.0),
+                                    child: Container(
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFF4F4F5),
+                                      ),
+                                      child: CachedNetworkImage(
+                                        imageUrl: category['image'] as String,
+                                        width: double.infinity,
+                                        height: isLastAndOdd ? 120 : 90,
+                                        fit: BoxFit.cover,
+                                        placeholder: (context, url) =>
+                                            Shimmer.fromColors(
+                                          baseColor: Colors.grey[300]!,
+                                          highlightColor: Colors.grey[100]!,
+                                          child: Container(color: Colors.white),
+                                        ),
+                                        errorWidget: (context, url, error) =>
+                                            Shimmer.fromColors(
+                                          baseColor: Colors.grey[300]!,
+                                          highlightColor: Colors.grey[100]!,
+                                          child: Container(color: Colors.white),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    category['Categories'] as String,
+                                    style: GoogleFonts.poppins(
+                                      color: Colors.black54,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
                               ),
-                            );
-                          },
-                          child: SizedBox(
-                            width: (MediaQuery.of(context).size.width - 60) / 2,
-                            child: Column(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8.0),
-                                  child: Container(
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFFF4F4F5),
-                                    ),
-                                    // Set your desired background color here
-                                    child: CachedNetworkImage(
-                                      imageUrl: category['image'] as String,
-                                      width: double.infinity,
-                                      height: 100,
-                                      fit: BoxFit.cover,
-                                      placeholder: (context, url) =>
-                                          Shimmer.fromColors(
-                                        baseColor: Colors.grey[300]!,
-                                        highlightColor: Colors.grey[100]!,
-                                        child: Container(color: Colors.white),
-                                      ),
-                                      errorWidget: (context, url, error) =>
-                                          Shimmer.fromColors(
-                                        baseColor: Colors.grey[300]!,
-                                        highlightColor: Colors.grey[100]!,
-                                        child: Container(color: Colors.white),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  category['Categories'] as String,
-                                  style: GoogleFonts.poppins(
-                                    color: Colors.black54,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
                             ),
-                          ),
-                        );
-                      }).toList() ??
-                      [],
-                ),
-              ],
+                          );
+                        }).toList() ??
+                        [],
+                  ),
+                ],
+              ),
             ),
           );
         } else {

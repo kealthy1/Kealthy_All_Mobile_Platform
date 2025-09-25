@@ -113,93 +113,188 @@ class TrialDish {
 final dishesProvider =
     StreamProvider.family<List<TrialDish>, String?>((ref, categoryName) async* {
   print('Fetching dishes for category: $categoryName');
-  yield* FirebaseFirestore.instance
+  final snapshot = await FirebaseFirestore.instance
       .collection('Products')
       .where('Type', isEqualTo: categoryName)
-      .snapshots()
-      .map((snapshot) {
-    final dishMap = <String, Map<String, dynamic>>{};
-    final quantityMap = <String, List<String>>{};
-    final priceMap = <String, Map<String, num>>{};
-    final baseNameMap = <String, String>{};
-    final quantitySohMap = <String, Map<String, int>>{};
-    for (var doc in snapshot.docs) {
-      final fullName = doc.data()['Name']?.toString() ?? '';
-      final quantity = doc.data()['Qty']?.toString() ?? '';
-      final baseProductName =
-          doc.data()['BaseProductName']?.toString() ?? fullName;
-      final data = Map<String, dynamic>.from(doc.data())..['id'] = doc.id;
+      .get();
 
-      final baseName = RegExp(r'^(.*?)\s*\d+\s*[a-zA-Z]+$')
-              .firstMatch(fullName)
-              ?.group(1)
-              ?.trim() ??
-          baseProductName;
+  if (snapshot.docs.isEmpty) {
+    yield* FirebaseFirestore.instance
+        .collection('Products')
+        .where('Category', isEqualTo: categoryName)
+        .snapshots()
+        .map((snapshot) {
+      final dishMap = <String, Map<String, dynamic>>{};
+      final quantityMap = <String, List<String>>{};
+      final priceMap = <String, Map<String, num>>{};
+      final baseNameMap = <String, String>{};
+      final quantitySohMap = <String, Map<String, int>>{};
+      for (var doc in snapshot.docs) {
+        final fullName = doc.data()['Name']?.toString() ?? '';
+        final quantity = doc.data()['Qty']?.toString() ?? '';
+        final baseProductName =
+            doc.data()['BaseProductName']?.toString() ?? fullName;
+        final data = Map<String, dynamic>.from(doc.data())..['id'] = doc.id;
 
-      if (!dishMap.containsKey(baseName)) {
-        dishMap[baseName] = data;
-        dishMap[baseName]!['Name'] = baseName;
-      }
+        final baseName = RegExp(r'^(.*?)\s*\d+\s*[a-zA-Z]+$')
+                .firstMatch(fullName)
+                ?.group(1)
+                ?.trim() ??
+            baseProductName;
 
-      if (quantity.isNotEmpty) {
-        quantitySohMap[baseName] = quantitySohMap[baseName] ?? {};
-        quantitySohMap[baseName]![quantity] =
-            int.tryParse(doc.data()['SOH'].toString()) ?? 0;
-        quantityMap[baseName] = quantityMap[baseName] ?? [];
-        priceMap[baseName] = priceMap[baseName] ?? {};
-        if (!quantityMap[baseName]!.contains(quantity)) {
-          quantityMap[baseName]!.add(quantity);
-          priceMap[baseName]![quantity] =
-              (data['offer_price'] is num && data['offer_price'] > 0)
-                  ? data['offer_price']
-                  : (data['Price'] is num
-                      ? data['Price']
-                      : int.tryParse(data['Price']?.toString() ?? '0') ?? 0);
+        if (!dishMap.containsKey(baseName)) {
+          dishMap[baseName] = data;
+          dishMap[baseName]!['Name'] = baseName;
         }
+
+        if (quantity.isNotEmpty) {
+          quantitySohMap[baseName] = quantitySohMap[baseName] ?? {};
+          quantitySohMap[baseName]![quantity] =
+              int.tryParse(doc.data()['SOH'].toString()) ?? 0;
+          quantityMap[baseName] = quantityMap[baseName] ?? [];
+          priceMap[baseName] = priceMap[baseName] ?? {};
+          if (!quantityMap[baseName]!.contains(quantity)) {
+            quantityMap[baseName]!.add(quantity);
+            priceMap[baseName]![quantity] =
+                (data['offer_price'] is num && data['offer_price'] > 0)
+                    ? data['offer_price']
+                    : (data['Price'] is num
+                        ? data['Price']
+                        : int.tryParse(data['Price']?.toString() ?? '0') ?? 0);
+          }
+        }
+
+        baseNameMap[doc.id] = baseName;
       }
 
-      baseNameMap[doc.id] = baseName;
-    }
+      return dishMap.entries.map((entry) {
+        final baseName = entry.key;
+        final quantities = quantityMap[baseName] ?? ['Default'];
+        quantities.sort((a, b) {
+          final aNum = int.tryParse(RegExp(r'\d+').stringMatch(a) ?? '') ?? 0;
+          final bNum = int.tryParse(RegExp(r'\d+').stringMatch(b) ?? '') ?? 0;
+          return bNum.compareTo(aNum);
+        });
+        final priceData = priceMap[baseName] ?? {};
 
-    return dishMap.entries.map((entry) {
-      final baseName = entry.key;
-      final quantities = quantityMap[baseName] ?? ['Default'];
-      quantities.sort((a, b) {
-        final aNum = int.tryParse(RegExp(r'\d+').stringMatch(a) ?? '') ?? 0;
-        final bNum = int.tryParse(RegExp(r'\d+').stringMatch(b) ?? '') ?? 0;
-        return bNum.compareTo(aNum);
-      });
-      final priceData = priceMap[baseName] ?? {};
+        final quantityIds = <String, dynamic>{};
+        final productNames = <String, dynamic>{};
 
-      final quantityIds = <String, dynamic>{};
-      final productNames = <String, dynamic>{};
+        for (final qty in quantities) {
+          final id = entry.value['id'];
 
-      for (final qty in quantities) {
-        final id = entry.value['id'];
+          final name = entry.value['Name']?.toString() ?? baseName;
 
-        final name = entry.value['Name']?.toString() ?? baseName;
+          productNames[qty] = {
+            'id': id,
+            'name': name,
+          };
 
-        productNames[qty] = {
-          'id': id,
-          'name': name,
-        };
+          quantityIds[qty] = id;
+        }
+        final quantityPrices =
+            priceMap[baseName] ?? {quantities.first: entry.value['Price'] ?? 0};
 
-        quantityIds[qty] = id;
+        return TrialDish.fromFirestore(
+          entry.value['id'] ?? '',
+          entry.value,
+          quantities,
+          quantityPrices,
+          quantityIds,
+          quantitySohMap[baseName] ?? {},
+          productNames,
+        );
+      }).toList();
+    });
+  } else {
+    yield* FirebaseFirestore.instance
+        .collection('Products')
+        .where('Type', isEqualTo: categoryName)
+        .snapshots()
+        .map((snapshot) {
+      final dishMap = <String, Map<String, dynamic>>{};
+      final quantityMap = <String, List<String>>{};
+      final priceMap = <String, Map<String, num>>{};
+      final baseNameMap = <String, String>{};
+      final quantitySohMap = <String, Map<String, int>>{};
+      for (var doc in snapshot.docs) {
+        final fullName = doc.data()['Name']?.toString() ?? '';
+        final quantity = doc.data()['Qty']?.toString() ?? '';
+        final baseProductName =
+            doc.data()['BaseProductName']?.toString() ?? fullName;
+        final data = Map<String, dynamic>.from(doc.data())..['id'] = doc.id;
+
+        final baseName = RegExp(r'^(.*?)\s*\d+\s*[a-zA-Z]+$')
+                .firstMatch(fullName)
+                ?.group(1)
+                ?.trim() ??
+            baseProductName;
+
+        if (!dishMap.containsKey(baseName)) {
+          dishMap[baseName] = data;
+          dishMap[baseName]!['Name'] = baseName;
+        }
+
+        if (quantity.isNotEmpty) {
+          quantitySohMap[baseName] = quantitySohMap[baseName] ?? {};
+          quantitySohMap[baseName]![quantity] =
+              int.tryParse(doc.data()['SOH'].toString()) ?? 0;
+          quantityMap[baseName] = quantityMap[baseName] ?? [];
+          priceMap[baseName] = priceMap[baseName] ?? {};
+          if (!quantityMap[baseName]!.contains(quantity)) {
+            quantityMap[baseName]!.add(quantity);
+            priceMap[baseName]![quantity] =
+                (data['offer_price'] is num && data['offer_price'] > 0)
+                    ? data['offer_price']
+                    : (data['Price'] is num
+                        ? data['Price']
+                        : int.tryParse(data['Price']?.toString() ?? '0') ?? 0);
+          }
+        }
+
+        baseNameMap[doc.id] = baseName;
       }
-      final quantityPrices =
-          priceMap[baseName] ?? {quantities.first: entry.value['Price'] ?? 0};
 
-      return TrialDish.fromFirestore(
-        entry.value['id'] ?? '',
-        entry.value,
-        quantities,
-        quantityPrices,
-        quantityIds,
-        quantitySohMap[baseName] ?? {},
-        productNames,
-      );
-    }).toList();
-  });
+      return dishMap.entries.map((entry) {
+        final baseName = entry.key;
+        final quantities = quantityMap[baseName] ?? ['Default'];
+        quantities.sort((a, b) {
+          final aNum = int.tryParse(RegExp(r'\d+').stringMatch(a) ?? '') ?? 0;
+          final bNum = int.tryParse(RegExp(r'\d+').stringMatch(b) ?? '') ?? 0;
+          return bNum.compareTo(aNum);
+        });
+        final priceData = priceMap[baseName] ?? {};
+
+        final quantityIds = <String, dynamic>{};
+        final productNames = <String, dynamic>{};
+
+        for (final qty in quantities) {
+          final id = entry.value['id'];
+
+          final name = entry.value['Name']?.toString() ?? baseName;
+
+          productNames[qty] = {
+            'id': id,
+            'name': name,
+          };
+
+          quantityIds[qty] = id;
+        }
+        final quantityPrices =
+            priceMap[baseName] ?? {quantities.first: entry.value['Price'] ?? 0};
+
+        return TrialDish.fromFirestore(
+          entry.value['id'] ?? '',
+          entry.value,
+          quantities,
+          quantityPrices,
+          quantityIds,
+          quantitySohMap[baseName] ?? {},
+          productNames,
+        );
+      }).toList();
+    });
+  }
 });
 
 class FoodSubCategoryPage extends ConsumerStatefulWidget {
@@ -397,54 +492,6 @@ class _FoodSubCategoryPageState extends ConsumerState<FoodSubCategoryPage> {
   }
 
   Widget _buildFoodItem(TrialDish dish) {
-    const till11 = [
-      'Herbrost Chicken Veggie Bowl',
-      'Buttercraft Beef Tenderloin Bowl',
-      'Masalacraft Tuna Bowl',
-      'Millet Pasta Veggie Bowl',
-      'Mushroom Mix Thai Bowl',
-      'Non-Veg Style Cauli Rice Bowl',
-      'Quinoa & Tuna Fusion Bowl',
-      'Soya Paneer Bowl',
-      'Egg Veggie Power Salad',
-      'Chicken Veggie Power Salad',
-    ];
-
-    const after11 = [
-      'Herbrost Beef Tenderloin Bowl',
-      'Buttercraft Chicken Bowl',
-      'Herbrost Tuna Fish Bowl',
-      'Millet Pasta Chicken Bowl',
-      'Tuna & Vegetable Protein Bowl',
-      'Mushroom Mix Conti Bowl',
-      'Veg Style Cauli Rice Bowl',
-      'Soya Paneer Bowl',
-      'Egg Veggie Power Salad',
-      'Chicken Veggie Power Salad',
-    ];
-
-    const common = [
-      'Soya Paneer Bowl',
-      'Egg Veggie Power Salad',
-      'Chicken Veggie Power Salad',
-    ];
-
-    final isTill11 = till11.contains(dish.name);
-    final isAfter11 = after11.contains(dish.name);
-    final isCommon = common.contains(dish.name);
-
-    final currentHour = DateTime.now().hour + DateTime.now().minute / 60.0;
-
-    bool isInSlot1 = currentHour >= 17.0 || currentHour < 11.0;
-    bool isInSlot2 = currentHour >= 11.0 && currentHour < 17.0;
-
-    final isInList = isTill11 || isAfter11 || isCommon;
-
-    final isAvailableNow = !isInList ||
-        isCommon ||
-        (isTill11 && isInSlot1) ||
-        (isAfter11 && isInSlot2);
-
     _selectedQuantities[dish.id] ??= dish.quantities.first;
 
     final availableQuantities = dish.quantities
