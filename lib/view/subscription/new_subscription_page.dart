@@ -25,25 +25,25 @@ final ingredientsProvider =
 
   final query = fs
       .collection('Products')
-      .where('Type', isEqualTo: mealType == MealType.lunch ? 'Lunch' : 'Dinner')
+      .where('Category', isEqualTo: 'Kealthy Kitchen')
       .limit(500);
 
   return query.snapshots().map((snap) {
-    final set = <String>{};
+    final setAllergy = <String>{};
 
     for (final doc in snap.docs) {
       final data = doc.data();
       final list = (data['Ingredients'] as List?)?.cast<dynamic>() ?? const [];
       for (final item in list) {
+        print('item---$item');
         final s = (item ?? '').toString().trim();
-        if (s.isNotEmpty) set.add(s);
+        if (s.isNotEmpty) setAllergy.add(s);
       }
     }
 
     // Add some defaults
-    set.addAll({'Soya', 'Paneer', 'Beef'});
 
-    final out = set.toList()
+    final out = setAllergy.toList()
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     return out;
   });

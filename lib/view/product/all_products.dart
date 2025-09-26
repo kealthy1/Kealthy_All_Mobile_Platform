@@ -345,9 +345,8 @@ class _AllProductsPageState extends ConsumerState<AllProductsPage>
                               context,
                               MaterialPageRoute(
                                 builder: (context) => ProductPage(
-                                    productId: filteredProducts[index].id , ),
-                                    
-
+                                  productId: filteredProducts[index].id,
+                                ),
                               ),
                             );
                           },
@@ -563,7 +562,6 @@ class _AllProductsPageState extends ConsumerState<AllProductsPage>
                                                           ),
                                                         ),
                                                     ]),
-                                               
                                               ],
                                             ),
                                           ],
@@ -645,64 +643,44 @@ class _AllProductsPageState extends ConsumerState<AllProductsPage>
                                   right: 0,
                                   child: ClipRRect(
                                     borderRadius: const BorderRadius.only(
-                                      topRight: Radius.circular(10),
-                                    ),
+                                        topRight: Radius.circular(10)),
                                     child: Container(
-                                      height: 46,
-                                      width: 38,
+                                      height: 40,
+                                      width:
+                                          64, // a bit wider so one line fits nicely
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 8.0, vertical: 4.0),
                                       decoration: const BoxDecoration(
                                         color: Color.fromARGB(255, 201, 82, 74),
                                       ),
                                       alignment: Alignment.center,
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: (data['SOH'] ?? 1) == 0
-                                            ? [
-                                                Text('OUT',
-                                                    style: GoogleFonts.poppins(
-                                                        color: Colors.white,
-                                                        fontSize: 6,
-                                                        fontWeight:
-                                                            FontWeight.bold)),
-                                                Text('OF',
-                                                    style: GoogleFonts.poppins(
-                                                        color: Colors.white,
-                                                        fontSize: 7,
-                                                        fontWeight:
-                                                            FontWeight.bold)),
-                                                Text('STOCK',
-                                                    style: GoogleFonts.poppins(
-                                                        color: Colors.white,
-                                                        fontSize: 6,
-                                                        fontWeight:
-                                                            FontWeight.bold)),
-                                              ]
-                                            : [
-                                                Text('ONLY',
-                                                    style: GoogleFonts.poppins(
-                                                        color: Colors.white,
-                                                        fontSize: 6,
-                                                        fontWeight:
-                                                            FontWeight.bold)),
-                                                Text('${data['SOH']}',
-                                                    style: GoogleFonts.poppins(
-                                                        color: Colors.white,
-                                                        fontSize: 7,
-                                                        fontWeight:
-                                                            FontWeight.bold)),
-                                                Text('LEFT',
-                                                    style: GoogleFonts.poppins(
-                                                        color: Colors.white,
-                                                        fontSize: 6,
-                                                        fontWeight:
-                                                            FontWeight.bold)),
-                                              ],
+                                      child: Builder(
+                                        builder: (_) {
+                                          final soh =
+                                              (data['SOH'] as num?)?.toInt() ??
+                                                  1;
+                                          final label = soh == 0
+                                              ? 'OUT OF STOCK'
+                                              : 'ONLY $soh LEFT';
+                                          return FittedBox(
+                                            // ensures it fits within the badge
+                                            fit: BoxFit.scaleDown,
+                                            child: Text(
+                                              label,
+                                              textAlign: TextAlign.center,
+                                              style: GoogleFonts.poppins(
+                                                color: Colors.white,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w800,
+                                                letterSpacing: .3,
+                                              ),
+                                            ),
+                                          );
+                                        },
                                       ),
                                     ),
                                   ),
-                                ),
+                                )
                             ],
                           ),
                         );

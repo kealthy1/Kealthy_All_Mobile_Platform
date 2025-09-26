@@ -33,7 +33,20 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
   Widget build(BuildContext context) {
     super.build(context);
     final FirebaseFirestore firestore = FirebaseFirestore.instance;
+    final screenWidth = MediaQuery.of(context).size.width;
+    double tileWidth;
+    double tileHeight;
 
+    if (screenWidth < 600) {
+      tileWidth = screenWidth * 0.3;
+      tileHeight = screenWidth * 0.3;
+    } else if (screenWidth < 900) {
+      tileWidth = screenWidth * 0.3;
+      tileHeight = 280;
+    } else {
+      tileWidth = screenWidth * 0.3;
+      tileHeight = 300;
+    }
     return FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
       future:
           firestore.collection('foodSubcategory').orderBy('Categories').get(),
@@ -71,8 +84,8 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Wrap(
-                    spacing: 12.0,
-                    runSpacing: 12.0,
+                    spacing: 8.0,
+                    runSpacing: 8.0,
                     alignment: WrapAlignment.center,
                     children: categories?.asMap().entries.map((entry) {
                           final index = entry.key;
@@ -107,7 +120,7 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
                             },
                             child: Container(
                               width:
-                                  (MediaQuery.of(context).size.width - 65) / 2,
+                                  (MediaQuery.of(context).size.width - 48) / 3,
                               alignment: isLastAndOdd ? Alignment.center : null,
                               child: Column(
                                 children: [
@@ -119,8 +132,8 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
                                       ),
                                       child: CachedNetworkImage(
                                         imageUrl: category['image'] as String,
-                                        width: double.infinity,
-                                        height: isLastAndOdd ? 120 : 90,
+                                        width: tileWidth,
+                                        height: tileHeight,
                                         fit: BoxFit.cover,
                                         placeholder: (context, url) =>
                                             Shimmer.fromColors(
@@ -143,7 +156,7 @@ class _HomeCategoryState extends ConsumerState<FoodCategory>
                                     style: GoogleFonts.poppins(
                                       color: Colors.black54,
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 13,
+                                      fontSize: 10,
                                     ),
                                     textAlign: TextAlign.center,
                                   ),

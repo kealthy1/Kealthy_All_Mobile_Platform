@@ -167,7 +167,6 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
         return false; // Fallback for error state
       },
     );
-    print('match: $match');
 
     final isDisabled = title == 'Cash on Delivery' && match;
     return GestureDetector(
@@ -309,7 +308,30 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
     final hasFoodItem =
         cartItems.any((item) => trialDishNames.contains(item.name));
 
-    if (selectedPaymentMethod == 'Cash on Delivery' && hasFoodItem) {
+    print('trialDishesByType.keys: ${trialDishesByType.keys}');
+
+    final namesAsync = ref.watch(foodSubcategoryNamesProvider);
+
+    final match = namesAsync.when(
+      data: (categoryNames) {
+        print('categoryNames: $categoryNames');
+        final result = trialDishesByType.keys.any((type) {
+          final contains = categoryNames.contains(type);
+          print('Checking type: $type, contains: $contains');
+          return contains;
+        });
+        return result;
+      },
+      loading: () {
+        print('namesAsync is loading');
+        return false; // Fallback for loading state
+      },
+      error: (error, stack) {
+        debugPrint('Error in foodSubcategoryNamesProvider: $error\n$stack');
+        return false; // Fallback for error state
+      },
+    );
+    if (selectedPaymentMethod == 'Cash on Delivery' && match) {
       ref.read(isOrderSavingProvider.notifier).state = false;
       PaymentDialogHelper.showCustomDialog(
         context,
